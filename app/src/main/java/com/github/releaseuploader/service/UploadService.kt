@@ -103,14 +103,15 @@ class UploadService : Service() {
                         contentResolver = contentResolver,
                         uri = uri,
                         fileName = fileName,
-                        mimeType = mimeType
-                    ) { progress ->
-                        _uploadProgress.value = _uploadProgress.value.copy(
-                            fileProgress = progress,
-                            overallProgress = ((index.toFloat() + progress / 100f) / files.size) * 100f
-                        )
-                        updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
-                    }
+                        mimeType = mimeType,
+                        onProgress = { progress ->
+                            _uploadProgress.value = _uploadProgress.value.copy(
+                                fileProgress = progress,
+                                overallProgress = ((index.toFloat() + progress / 100f) / files.size) * 100f
+                            )
+                            updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
+                        }
+                    )
 
                     if (result.isFailure) {
                         throw result.exceptionOrNull() ?: IOException("Upload failed: $fileName")
