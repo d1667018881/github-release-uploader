@@ -2,10 +2,11 @@ package com.github.releaseuploader.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.releaseuploader.data.local.SessionManager
 import com.github.releaseuploader.data.local.TokenManager
 import com.github.releaseuploader.data.model.Repo
 import com.github.releaseuploader.data.repository.GitHubRepository
-import com.github.releaseuploader.network.RateLimitInterceptor
+import com.github.releaseuploader.utils.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -25,7 +26,7 @@ data class RepoListUiState(
 class RepoListViewModel @Inject constructor(
     private val repository: GitHubRepository,
     private val tokenManager: TokenManager,
-    private val rateLimitInterceptor: RateLimitInterceptor
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RepoListUiState())
@@ -34,11 +35,8 @@ class RepoListViewModel @Inject constructor(
     init {
         loadRepos()
         viewModelScope.launch {
-            rateLimitInterceptor.rateLimitExceeded.collect { exceeded ->
-                if (exceeded) {
-                    tokenManager.clearAll()
-                    _uiState.value = _uiState.value.copy(isLoggedOut = true)
-                }
+            sessionManager.loggedOut.collect {
+                _uiState.value = _uiState.value.copy(isLoggedOut = true)
             }
         }
     }
@@ -51,7 +49,7 @@ class RepoListViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         repos = repos,
                         isLoading = false,
-                        hasMore = repos.size >= 30,
+                        hasMore = repos.size >= Constants.PER_PAGE,
                         currentPage = 1
                     )
                 },
@@ -65,34 +63,42 @@ class RepoListViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 分页加载：用 update {} 原子读改写，杜绝并发竞态。
+     * 快速滑动时 snapshotFlow 可能连续触发，但 update 内部会二次校验 isLoadingMore，
+     * 只有一个协程能通过守卫，不会重复拉取同一页。
+     */
     fun loadMore() {
-        val state = _uiState.value
-        if (state.isLoadingMore || !state.hasMore) return
+        var started = false
+        _uiState.update { s ->
+            if (s.isLoadingMore || !s.hasMore) return@update s
+            started = true
+            s.copy(isLoadingMore = true)
+        }
+        if (!started) return
 
         viewModelScope.launch {
-            _uiState.value = state.copy(isLoadingMore = true)
-            val nextPage = state.currentPage + 1
+            val nextPage = _uiState.value.currentPage + 1
             repository.getUserRepos(nextPage).fold(
                 onSuccess = { repos ->
-                    _uiState.value = _uiState.value.copy(
-                        repos = _uiState.value.repos + repos,
-                        isLoadingMore = false,
-                        hasMore = repos.size >= 30,
-                        currentPage = nextPage
-                    )
+                    _uiState.update { s ->
+                        s.copy(
+                            repos = s.repos + repos,
+                            isLoadingMore = false,
+                            hasMore = repos.size >= Constants.PER_PAGE,
+                            currentPage = nextPage
+                        )
+                    }
                 },
                 onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoadingMore = false,
-                        error = e.message
-                    )
+                    _uiState.update { s -> s.copy(isLoadingMore = false, error = e.message) }
                 }
             )
         }
     }
 
     fun logout() {
-        tokenManager.clearAll()
+        sessionManager.logout()
         _uiState.value = RepoListUiState(isLoggedOut = true)
     }
 }

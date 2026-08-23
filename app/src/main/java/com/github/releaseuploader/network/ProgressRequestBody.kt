@@ -45,6 +45,7 @@ class ProgressRequestBody(
     }
 
     companion object {
-        private const val DEFAULT_BUFFER_SIZE = 8 * 1024
+        // 64KB 缓冲：提高吞吐、减少 onProgress 回调频率（配合上层节流）
+        private const val DEFAULT_BUFFER_SIZE = 64 * 1024
     }
 }

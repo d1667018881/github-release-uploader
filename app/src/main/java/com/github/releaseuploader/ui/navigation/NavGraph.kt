@@ -1,5 +1,6 @@
 package com.github.releaseuploader.ui.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -11,11 +12,13 @@ import com.github.releaseuploader.ui.screens.*
 sealed class Screen(val route: String) {
     data object Login : Screen("login")
     data object RepoList : Screen("repo_list")
-    data object RepoDetail : Screen("repo_detail/{owner}/{repo}") {
-        fun createRoute(owner: String, repo: String) = "repo_detail/$owner/$repo"
+    data object RepoDetail : Screen("repo_detail/{owner}/{repo}/{branch}") {
+        fun createRoute(owner: String, repo: String, branch: String) = "repo_detail/$owner/$repo/$branch"
     }
-    data object CodeBrowser : Screen("code_browser/{owner}/{repo}/{path}") {
-        fun createRoute(owner: String, repo: String, path: String) = "code_browser/$owner/$repo/$path"
+    data object CodeBrowser : Screen("code_browser/{owner}/{repo}/{branch}/{path}") {
+        // path 含 "/"（子目录文件），必须 Uri.encode，Navigation 在编码后的 URI 上匹配，取参时自动解码
+        fun createRoute(owner: String, repo: String, branch: String, path: String) =
+            "code_browser/$owner/$repo/$branch/${Uri.encode(path)}"
     }
 }
 
@@ -34,8 +37,8 @@ fun NavGraph(navController: NavHostController) {
 
         composable(Screen.RepoList.route) {
             RepoListScreen(
-                onRepoClick = { owner, repo ->
-                    navController.navigate(Screen.RepoDetail.createRoute(owner, repo))
+                onRepoClick = { owner, repo, branch ->
+                    navController.navigate(Screen.RepoDetail.createRoute(owner, repo, branch))
                 },
                 onLoggedOut = {
                     navController.navigate(Screen.Login.route) {
@@ -49,16 +52,19 @@ fun NavGraph(navController: NavHostController) {
             route = Screen.RepoDetail.route,
             arguments = listOf(
                 navArgument("owner") { type = NavType.StringType },
-                navArgument("repo") { type = NavType.StringType }
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("branch") { type = NavType.StringType }
             )
         ) { backStackEntry ->
             val owner = backStackEntry.arguments?.getString("owner") ?: ""
             val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val branch = backStackEntry.arguments?.getString("branch") ?: "main"
             RepoDetailScreen(
                 owner = owner,
                 repo = repo,
+                branch = branch,
                 onFileClick = { path ->
-                    navController.navigate(Screen.CodeBrowser.createRoute(owner, repo, path))
+                    navController.navigate(Screen.CodeBrowser.createRoute(owner, repo, branch, path))
                 },
                 onBack = { navController.popBackStack() }
             )
@@ -69,15 +75,18 @@ fun NavGraph(navController: NavHostController) {
             arguments = listOf(
                 navArgument("owner") { type = NavType.StringType },
                 navArgument("repo") { type = NavType.StringType },
+                navArgument("branch") { type = NavType.StringType },
                 navArgument("path") { type = NavType.StringType }
             )
         ) { backStackEntry ->
             val owner = backStackEntry.arguments?.getString("owner") ?: ""
             val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val branch = backStackEntry.arguments?.getString("branch") ?: "main"
             val path = backStackEntry.arguments?.getString("path") ?: ""
             CodeBrowserScreen(
                 owner = owner,
                 repo = repo,
+                branch = branch,
                 path = path,
                 onBack = { navController.popBackStack() }
             )

@@ -3,10 +3,13 @@ package com.github.releaseuploader.ui.viewmodel
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.releaseuploader.data.model.ContentItem
 import com.github.releaseuploader.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class CodeBrowserUiState(
@@ -31,18 +34,12 @@ class CodeBrowserViewModel @Inject constructor(
                 error = null,
                 fileName = path.substringAfterLast("/")
             )
-            repository.getFileContent(owner, repo, path).fold(
-                onSuccess = { item ->
-                    val decoded = if (item.encoding == "base64" && item.content != null) {
-                        try {
-                            val cleanContent = item.content.replace("\n", "").replace("\r", "")
-                            String(Base64.decode(cleanContent, Base64.DEFAULT))
-                        } catch (e: Exception) {
-                            "Error decoding file content: ${e.message}"
-                        }
-                    } else {
-                        item.content ?: ""
-                    }
+            // 网络请求 + Base64 解码整体放 IO 线程，避免主线程解码 ~1.3MB 内容卡顿/ANR
+            val result = withContext(Dispatchers.IO) {
+                repository.getFileContent(owner, repo, path).map { item -> decodeContent(item) }
+            }
+            result.fold(
+                onSuccess = { decoded ->
                     _uiState.value = _uiState.value.copy(
                         content = decoded,
                         isLoading = false
@@ -56,5 +53,18 @@ class CodeBrowserViewModel @Inject constructor(
                 }
             )
         }
+    }
+
+    private fun decodeContent(item: ContentItem): String {
+        if (item.encoding == "base64" && item.content != null) {
+            return try {
+                val cleanContent = item.content.replace("\n", "").replace("\r", "")
+                // 显式 UTF-8 解码，避免非 UTF-8 设备上乱码
+                String(Base64.decode(cleanContent, Base64.DEFAULT), Charsets.UTF_8)
+            } catch (e: Exception) {
+                "Error decoding file content: ${e.message}"
+            }
+        }
+        return item.content ?: ""
     }
 }

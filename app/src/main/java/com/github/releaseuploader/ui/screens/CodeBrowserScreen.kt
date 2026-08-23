@@ -25,6 +25,7 @@ import com.github.releaseuploader.ui.viewmodel.CodeBrowserViewModel
 fun CodeBrowserScreen(
     owner: String,
     repo: String,
+    branch: String,
     path: String,
     onBack: () -> Unit,
     viewModel: CodeBrowserViewModel = hiltViewModel()
@@ -34,6 +35,11 @@ fun CodeBrowserScreen(
 
     LaunchedEffect(path) {
         viewModel.loadFile(owner, repo, path)
+    }
+
+    val openInBrowser: () -> Unit = {
+        val url = "https://github.com/$owner/$repo/blob/$branch/$path"
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
     Scaffold(
@@ -46,10 +52,7 @@ fun CodeBrowserScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        val url = "https://github.com/$owner/$repo/blob/main/$path"
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    }) {
+                    IconButton(onClick = openInBrowser) {
                         Icon(Icons.Default.OpenInBrowser, "Open in browser")
                     }
                 }
@@ -69,10 +72,7 @@ fun CodeBrowserScreen(
                         Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
                         if (uiState.error?.contains("too large") == true) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = {
-                                val url = "https://github.com/$owner/$repo/blob/main/$path"
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                            }) {
+                            Button(onClick = openInBrowser) {
                                 Text("Open in Browser")
                             }
                         }

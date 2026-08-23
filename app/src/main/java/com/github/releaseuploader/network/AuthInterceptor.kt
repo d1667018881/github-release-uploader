@@ -17,7 +17,8 @@ class AuthInterceptor @Inject constructor(
 
         val request = if (token != null) {
             originalRequest.newBuilder()
-                .header("Authorization", "token $token")
+                // Bearer 同时兼容 classic PAT 与 fine-grained PAT（token 前缀只认 classic）
+                .header("Authorization", "Bearer $token")
                 .header("Accept", "application/vnd.github+json")
                 .build()
         } else {

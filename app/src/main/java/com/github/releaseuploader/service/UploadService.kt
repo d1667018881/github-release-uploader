@@ -4,11 +4,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.provider.OpenableColumns
 import androidx.core.app.NotificationCompat
 import com.github.releaseuploader.data.repository.GitHubRepository
 import com.github.releaseuploader.ui.MainActivity
@@ -17,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +40,7 @@ class UploadService : Service() {
         const val EXTRA_UPLOAD_URL = "extra_upload_url"
         const val ACTION_STOP = "com.github.releaseuploader.action.STOP"
 
+        // 供应用内进度 UI 订阅（RepoDetailScreen collect）
         private val _uploadProgress = MutableStateFlow(UploadState())
         val uploadProgress: StateFlow<UploadState> = _uploadProgress
 
@@ -78,6 +82,9 @@ class UploadService : Service() {
             return START_NOT_STICKY
         }
 
+        // 新上传开始前重置全局进度状态，避免 UI 残留上次上传结果
+        resetState()
+
         startForeground(NOTIFICATION_ID, createNotification(0, 0, "Starting upload..."))
 
         _uploadProgress.value = UploadState(isUploading = true, totalFiles = files.size)
@@ -88,7 +95,10 @@ class UploadService : Service() {
                 for ((index, file) in files.withIndex()) {
                     if (!isActive) break
                     val uri = Uri.parse(file)
-                    val fileName = uri.lastPathSegment ?: "file_$index"
+                    // SAF 文档 URI 的 lastPathSegment 不是真实文件名（如 primary:Download/app.apk），
+                    // 必须通过 OpenableColumns.DISPLAY_NAME 查询
+                    val fileName = queryDisplayName(contentResolver, uri)
+                        ?: (uri.lastPathSegment ?: "file_$index")
                     val mimeType = contentResolver.getType(uri)
 
                     _uploadProgress.value = _uploadProgress.value.copy(
@@ -98,6 +108,11 @@ class UploadService : Service() {
                     )
                     updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
 
+                    // 进度节流：增量 ≥1% 或间隔 ≥250ms 才刷新 StateFlow 和通知，
+                    // 避免大文件每 64KB 一次刷新把通知/主线程刷爆
+                    var lastProgress = 0f
+                    var lastEmit = 0L
+
                     val result = repository.uploadAssetWithRetry(
                         uploadUrl = uploadUrl,
                         contentResolver = contentResolver,
@@ -105,11 +120,16 @@ class UploadService : Service() {
                         fileName = fileName,
                         mimeType = mimeType,
                         onProgress = { progress ->
-                            _uploadProgress.value = _uploadProgress.value.copy(
-                                fileProgress = progress,
-                                overallProgress = ((index.toFloat() + progress / 100f) / files.size) * 100f
-                            )
-                            updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
+                            val now = System.currentTimeMillis()
+                            if (progress - lastProgress >= 1f || now - lastEmit >= 250) {
+                                lastProgress = progress
+                                lastEmit = now
+                                _uploadProgress.value = _uploadProgress.value.copy(
+                                    fileProgress = progress,
+                                    overallProgress = ((index.toFloat() + progress / 100f) / files.size) * 100f
+                                )
+                                updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
+                            }
                         }
                     )
 
@@ -135,10 +155,26 @@ class UploadService : Service() {
                     error = e.message
                 )
                 updateNotification(0, files.size, "Upload failed: ${e.message}")
+            } finally {
+                // 终态通知展示 1.5s 后停止前台服务，避免服务常驻空转耗电
+                delay(1500)
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
             }
         }
 
         return START_NOT_STICKY
+    }
+
+    private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

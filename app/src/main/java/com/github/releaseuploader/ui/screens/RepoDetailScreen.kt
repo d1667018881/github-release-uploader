@@ -1,9 +1,12 @@
 package com.github.releaseuploader.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.releaseuploader.data.model.ContentItem
 import com.github.releaseuploader.service.UploadService
@@ -26,29 +30,47 @@ import com.github.releaseuploader.ui.viewmodel.RepoDetailViewModel
 fun RepoDetailScreen(
     owner: String,
     repo: String,
+    branch: String,
     onFileClick: (String) -> Unit,
     onBack: () -> Unit,
     viewModel: RepoDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val uploadState by UploadService.uploadProgress.collectAsState()
     val context = LocalContext.current
+
+    // 流程修正：先选文件 → 再建 Release → 成功后立即上传（避免取消选择留下空 Release）
+    var pendingUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
+    // Android 13+ 通知权限（不授权也能上传，只是进度通知不显示）
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            val uploadUrl = viewModel.uiState.value.uploadUrl
-            if (uploadUrl.isNotBlank()) {
-                val intent = Intent(context, UploadService::class.java).apply {
-                    putStringArrayListExtra(
-                        UploadService.EXTRA_FILES,
-                        ArrayList(uris.map { it.toString() })
-                    )
-                    putExtra(UploadService.EXTRA_UPLOAD_URL, uploadUrl)
+            pendingUris = uris
+            viewModel.createRelease(owner, repo) { uploadUrl ->
+                if (uploadUrl.isNotBlank() && pendingUris.isNotEmpty()) {
+                    startUpload(uploadUrl, pendingUris)
                 }
-                ContextCompat.startForegroundService(context, intent)
             }
         }
+    }
+
+    fun startUpload(uploadUrl: String, uris: List<Uri>) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val intent = Intent(context, UploadService::class.java).apply {
+            putStringArrayListExtra(UploadService.EXTRA_FILES, ArrayList(uris.map { it.toString() }))
+            putExtra(UploadService.EXTRA_UPLOAD_URL, uploadUrl)
+        }
+        ContextCompat.startForegroundService(context, intent)
     }
 
     LaunchedEffect(Unit) {
@@ -78,16 +100,14 @@ fun RepoDetailScreen(
                 TextButton(
                     onClick = {
                         viewModel.setReleaseTag(tagInput)
-                        viewModel.createRelease(owner, repo) { _ ->
-                            filePickerLauncher.launch(arrayOf("*/*"))
-                        }
+                        filePickerLauncher.launch(arrayOf("*/*"))
                     },
                     enabled = tagInput.isNotBlank() && !uiState.isCreatingRelease
                 ) {
                     if (uiState.isCreatingRelease) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp))
                     } else {
-                        Text("Create & Upload")
+                        Text("Choose Files & Upload")
                     }
                 }
             },
@@ -116,46 +136,88 @@ fun RepoDetailScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (uiState.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (uiState.error != null) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.loadContents(owner, repo) }) {
-                        Text("Retry")
-                    }
-                }
-            } else {
-                LazyColumn {
-                    // Parent directory
-                    if (uiState.currentPath.isNotEmpty()) {
-                        item {
-                            ListItem(
-                                headlineContent = { Text("..") },
-                                leadingContent = {
-                                    Icon(Icons.Default.Folder, "Parent directory")
-                                },
-                                modifier = Modifier.clickable {
-                                    val parentPath = uiState.currentPath.substringBeforeLast("/")
-                                    viewModel.loadContents(owner, repo, parentPath)
-                                }
-                            )
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // 应用内上传进度（订阅 UploadService.uploadProgress）
+            if (uploadState.isUploading || uploadState.isComplete || uploadState.error != null) {
+                UploadProgressBanner(uploadState)
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (uiState.isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else if (uiState.error != null) {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { viewModel.loadContents(owner, repo) }) {
+                            Text("Retry")
                         }
                     }
-                    items(uiState.contents, key = { it.path }) { item ->
-                        ContentItemRow(item = item, onClick = {
-                            if (item.type == "dir") {
-                                viewModel.loadContents(owner, repo, item.path)
-                            } else {
-                                onFileClick(item.path)
+                } else {
+                    LazyColumn {
+                        // Parent directory
+                        if (uiState.currentPath.isNotEmpty()) {
+                            item {
+                                ListItem(
+                                    headlineContent = { Text("..") },
+                                    leadingContent = {
+                                        Icon(Icons.Default.Folder, "Parent directory")
+                                    },
+                                    modifier = Modifier.clickable {
+                                        val parentPath = uiState.currentPath.substringBeforeLast("/")
+                                        viewModel.loadContents(owner, repo, parentPath)
+                                    }
+                                )
                             }
-                        })
+                        }
+                        items(uiState.contents, key = { it.path }) { item ->
+                            ContentItemRow(item = item, onClick = {
+                                if (item.type == "dir") {
+                                    viewModel.loadContents(owner, repo, item.path)
+                                } else {
+                                    onFileClick(item.path)
+                                }
+                            })
+                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UploadProgressBanner(state: UploadService.UploadState) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            when {
+                state.isUploading -> {
+                    Text(
+                        "Uploading ${state.currentFile} (${state.fileIndex}/${state.totalFiles})",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { state.overallProgress / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                state.isComplete -> {
+                    Text("Upload complete!", color = MaterialTheme.colorScheme.primary)
+                }
+                state.error != null -> {
+                    Text("Upload failed: ${state.error}", color = MaterialTheme.colorScheme.error)
                 }
             }
         }

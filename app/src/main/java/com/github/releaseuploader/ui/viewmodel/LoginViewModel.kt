@@ -2,6 +2,7 @@ package com.github.releaseuploader.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.releaseuploader.data.local.SessionManager
 import com.github.releaseuploader.data.local.TokenManager
 import com.github.releaseuploader.data.repository.GitHubRepository
 import com.github.releaseuploader.network.RateLimitInterceptor
@@ -20,7 +21,8 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val tokenManager: TokenManager,
     private val repository: GitHubRepository,
-    private val rateLimitInterceptor: RateLimitInterceptor
+    private val rateLimitInterceptor: RateLimitInterceptor,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -30,14 +32,12 @@ class LoginViewModel @Inject constructor(
         if (tokenManager.isLoggedIn()) {
             _uiState.value = LoginUiState(isLoggedIn = true)
         }
+        // 限流导致的登出由 SessionManager 统一处理，这里只响应事件更新 UI
         viewModelScope.launch {
-            rateLimitInterceptor.rateLimitExceeded.collect { exceeded ->
-                if (exceeded) {
-                    logout()
-                    _uiState.value = _uiState.value.copy(
-                        error = "API rate limit exceeded. You have been logged out."
-                    )
-                }
+            sessionManager.loggedOut.collect {
+                _uiState.value = LoginUiState(
+                    error = "API rate limit exceeded. You have been logged out."
+                )
             }
         }
     }
@@ -63,7 +63,7 @@ class LoginViewModel @Inject constructor(
     }
 
     fun logout() {
-        tokenManager.clearAll()
+        sessionManager.logout()
         _uiState.value = LoginUiState(isLoggedIn = false)
     }
 }

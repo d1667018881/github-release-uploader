@@ -69,6 +69,8 @@ buildTypes {
 
 ```
 github-release-uploader/
+├── AI_HANDOFF.md                          # 📄 AI 接手规范（接手必读，含审查修复记录）
+├── README.md                              # 本文件（项目总览 + AI 快速上手）
 ├── .github/workflows/android-build.yml   # CI/CD 工作流
 ├── app/
 │   ├── build.gradle.kts                   # 应用级构建配置
@@ -219,11 +221,12 @@ github-release-uploader/
 
 - 仓库详情页点击上传按钮
 - 弹出 Dialog 输入 Tag 名（如 `v1.0.0`）
-- 调用 API 创建 Release
-- 自动打开文件选择器（`OpenMultipleDocuments`，`*/*` MIME）
-- 多文件选择后通过前台服务真实上传（`UploadService` 注入 `GitHubRepository`）
-- `ProgressRequestBody` 按字节块计算上传进度
-- 失败自动重试（默认 3 次，`uploadAssetWithRetry`）
+- **先打开文件选择器**（`OpenMultipleDocuments`，`*/*` MIME）选文件
+- 选中后再调用 API 创建 Release（取消选择不会留下空 Release）
+- Release 创建成功后通过前台服务真实上传（`UploadService` 注入 `GitHubRepository`）
+- `ProgressRequestBody` 按 64KB 字节块计算上传进度（≥1% 或 ≥250ms 节流刷新）
+- 应用内实时展示上传进度条（订阅 `UploadService.uploadProgress`）
+- 失败自动重试（默认 3 次，仅网络错误/5xx 重试，4xx 不重试）
 
 ### 5. 前台服务（UploadService）
 
@@ -296,6 +299,7 @@ github-release-uploader/
 | 2 | `Unresolved reference: dependencyResolution` | Gradle 8.7 不支持 `dependencyResolution` | 改为 `dependencyResolutionManagement` |
 | 3 | `Accidental override: getContentResolver()` | Service 基类与 Hilt 注入的 contentResolver 冲突 | 移除 UploadService 中 `@Inject contentResolver` |
 | 4 | Release 创建 403 | `GITHUB_TOKEN` 默认权限不足 | 添加 `permissions: contents: write` |
+| 5 | 外部 AI 审查 21 条告警 | 协程取消/分页竞态/服务生命周期/主线程解码/缓存缺失等 | 16 条已修复（新增 `ApiException`、`SessionManager` 等），5 条评估不修改（含理由）；**详细记录见 `AI_HANDOFF.md`「九、审查修复记录」** |
 
 ### 依赖冲突处理策略
 
@@ -362,6 +366,10 @@ cd github-release-uploader
 ---
 
 ## 🤖 AI 接手项目指南
+
+> **📄 AI 接手规范文档在仓库根目录 [`AI_HANDOFF.md`](AI_HANDOFF.md)**（本仓库同级文件）。
+> 接手前**必须先读它**：包含项目速查、接手第一步、文件修改标准流程、构建监控、版本兼容矩阵、注意事项与禁忌、**已知坑与易错点**、**审查修复记录（最新改动全记录）**。
+> 下方是本 README 的快速版，细节以 `AI_HANDOFF.md` 为准。
 
 如果你是一个 AI 助手（如 Claude、GPT、MClaw 等），接手此项目时的操作流程：
 

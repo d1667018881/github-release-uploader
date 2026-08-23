@@ -290,13 +290,62 @@ implementation("group:artifact:version")
 
 #### 其他已知限制
 
-- `CodeBrowserScreen` 的「Open in browser」仍硬编码 `blob/main/`，对非 main 默认分支的仓库会 404（TODO：接入 `Repo.defaultBranch`）。
-- `RateLimitInterceptor` 只处理 403 限流（`X-RateLimit-Remaining=0`）；401 是 token 无效。限流置位后触发登出，登录成功时 `reset()` 复位。
-- Android 13+ 需运行时申请 `POST_NOTIFICATIONS` 权限通知才会展示（当前未实现，不影响前台服务运行）。
+- `CodeBrowserScreen` 的「Open in browser」已改为经导航参数传入 `Repo.defaultBranch`（不再硬编码 `blob/main/`）。
+- 限流处理已收敛：`RateLimitInterceptor` 只检测 403 限流（`X-RateLimit-Remaining=0`），登出动作统一由 `SessionManager` 负责（清 Token + 清缓存 + 广播登出事件），UI 层只订阅 `SessionManager.loggedOut`（SharedFlow 事件型，不重放）。
+- Android 13+ 的 `POST_NOTIFICATIONS` 已在 `RepoDetailScreen` 启动上传前运行时申请（未授权也能上传，仅通知不显示）。
+- 上传进度已接通应用内 UI（`RepoDetailScreen` 订阅 `UploadService.uploadProgress` 展示进度条）。
+- `GitHubRepository` 有轻量 LRU 内存缓存（目录/文件内容），登出时由 `SessionManager` 调 `clearCache()` 清理。
 
 ---
 
-## 九、快速调试命令
+## 九、审查修复记录（2026-08-24，两份外部 AI 审查报告）
+
+> 两份独立 AI 审查报告（代码优化审查 / 评审任务清单）共 **21 条独立告警**：
+> **16 条已修复，5 条评估后不修改**（理由见下，接手时不要无故回退）。
+> 涉及 15 个文件：新增 2 个（`ApiException.kt`、`SessionManager.kt`），修改 13 个。
+
+### 已修复（16 条）
+
+| 文件 | 修复内容 | 对应告警 |
+|------|---------|---------|
+| `network/ApiException.kt`（新） | 携带 HTTP code 的 IOException，供重试策略区分 4xx/5xx | 重试不区分错误类型 |
+| `data/local/SessionManager.kt`（新） | 收敛「限流→登出」：清 Token + 清缓存 + SharedFlow 广播登出（事件型不重放，避免 StateFlow 重放误登出） | 限流逻辑分散 + 状态重放脆弱 |
+| `data/repository/GitHubRepository.kt` | 抽 `safeApiCall<T>`：CancellationException 透传（不吞取消）+ 空 body 防护（消除 `body()!!` NPE）；重试仅网络 IOException/5xx，4xx 直接失败；contents/file LRU 内存缓存 + `clearCache()` | 吞取消异常 / NPE / 重试粗糙 / 样板代码 / 零缓存 |
+| `ui/viewmodel/LoginViewModel.kt` | 改为订阅 `SessionManager.loggedOut`，不再各自 collect 限流状态 | 限流逻辑分散 |
+| `ui/viewmodel/RepoListViewModel.kt` | 订阅 `SessionManager.loggedOut`；`loadMore` 用 `update{}` 原子读改写杜绝竞态；`30` 改 `Constants.PER_PAGE` | 分页竞态 / 硬编码 30 |
+| `service/UploadService.kt` | `OpenableColumns.DISPLAY_NAME` 查真实文件名（SAF URI 的 lastPathSegment 不可靠）；完成/失败后 `delay(1500)` 再 `stopForeground+stopSelf`（不常驻）；进度 ≥1% 或 ≥250ms 节流；新上传前 `resetState()` | 文件名错误 / 服务不退出 / 通知刷爆 / 死代码残留 |
+| `network/ProgressRequestBody.kt` | 缓冲 8KB→64KB，减少回调频率 | 通知无节流 |
+| `ui/viewmodel/CodeBrowserViewModel.kt` | 网络请求 + Base64 解码整体 `withContext(Dispatchers.IO)`；`String(bytes, Charsets.UTF_8)` 显式 UTF-8 | 主线程解码 ANR / 乱码 |
+| `ui/navigation/NavGraph.kt` | `CodeBrowser` 路由 `Uri.encode(path)`（子目录含 `/` 的文件可正常导航）；`RepoDetail`/`CodeBrowser` 路由增加 `{branch}` 参数 | 子目录文件打不开 / blob/main 硬编码 |
+| `ui/screens/RepoListScreen.kt` | `onRepoClick` 增加第三参 `repo.defaultBranch` | blob/main 硬编码 |
+| `ui/screens/CodeBrowserScreen.kt` | 「Open in browser」用 `branch` 参数拼 URL，不再硬编码 `blob/main/` | blob/main 硬编码 |
+| `ui/screens/RepoDetailScreen.kt` | 流程改为**先选文件 → 建 Release → 立即上传**（取消选择不产生空 Release）；Android 13+ 上传前申请 `POST_NOTIFICATIONS`；订阅 `UploadService.uploadProgress` 展示应用内进度条 | 流程反了 / 通知权限未申请 / 进度死代码 |
+| `network/AuthInterceptor.kt` | `Authorization: token` → `Bearer`（兼容 fine-grained PAT） | PAT 兼容性 |
+| `utils/Constants.kt` | 新增 `MAX_CONTENTS_CACHE_SIZE=50`、`MAX_FILE_CACHE_SIZE=10` | 缓存支持 |
+| `gradle.properties` | 新增 `org.gradle.caching=true`、`org.gradle.parallel=true` | 构建加速 |
+| `README.md` / `AI_HANDOFF.md` | 上传流程描述更新；已知坑清单标记已修复项 | 文档对齐 |
+
+### 评估后不修改（5 条，接手时遵守理由，勿强行回退/强行实施）
+
+| 告警 | 不修改理由 |
+|------|-----------|
+| targetSdk/compileSdk 升 35 | AGP 8.5.2 最高支持 compileSdk 34，升 35 必须同步升 AGP（需 8.6+），未经验证矩阵、CI 有失败风险；项目走 GitHub Release 自分发不上 Play Store，无合规压力。**如要升，必须单独验证并更新第六节兼容矩阵** |
+| release 换正式签名 | debug 签名是项目**有意为之**（CI 每次构建签名一致、可覆盖安装，适合个人自分发）；正式签名需 keystore 注入 CI secrets，属分发策略升级而非代码缺陷 |
+| 开启 R8 混淆（isMinifyEnabled） | 需补充 Retrofit/Gson keep 规则并回归测试，收益（体积）低风险高；APK 约 12MB 可接受 |
+| 依赖升级（BOM 2024.06 / AGP 8.5.2 / Kotlin 2.0.0） | 未验证兼容矩阵；升级必须走第六节流程先验证 |
+| material-icons-extended / security-crypto | 审查报告原文建议「保留即可 / 知悉风险」；icons 依赖实际使用中，移除需替换图标集 |
+
+### 关键设计决策（后续接手勿破坏）
+
+- **缓存范围**：只缓存静态数据（目录列表、文件内容）；仓库列表是动态数据（星标/更新时间会变），不做缓存避免脏数据。
+- **上传流程**：`createRelease` 成功回调拿到 `uploadUrl` 后立即启动 `UploadService`；`uploadUrl` 同时存入 `RepoDetailUiState.uploadUrl`。
+- **限流链路**：`RateLimitInterceptor`（403+`X-RateLimit-Remaining=0` 检测）→ `SessionManager`（清 Token+清缓存+广播）→ ViewModel（仅 UI 响应）。登录成功时 `RateLimitInterceptor.reset()` 复位。
+- **进度节流**：阈值 ≥1% 增量或 ≥250ms 间隔；缓冲 64KB。不要改回 8KB 或每块刷新。
+- **导航编码**：`CodeBrowser` 的 path 参数必须 `Uri.encode()` 后拼接（Navigation 匹配后自动解码），否则子目录文件无法打开。
+
+---
+
+## 十、快速调试命令
 
 ```bash
 # 查看仓库文件树

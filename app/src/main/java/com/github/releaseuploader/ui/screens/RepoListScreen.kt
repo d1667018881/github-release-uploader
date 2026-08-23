@@ -23,7 +23,7 @@ import com.github.releaseuploader.ui.viewmodel.RepoListViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepoListScreen(
-    onRepoClick: (String, String) -> Unit,
+    onRepoClick: (String, String, String) -> Unit,
     onLoggedOut: () -> Unit,
     viewModel: RepoListViewModel = hiltViewModel()
 ) {
@@ -84,7 +84,7 @@ fun RepoListScreen(
                         RepoItem(repo = repo, onClick = {
                             val parts = repo.fullName.split("/")
                             if (parts.size == 2) {
-                                onRepoClick(parts[0], parts[1])
+                                onRepoClick(parts[0], parts[1], repo.defaultBranch)
                             }
                         })
                     }
