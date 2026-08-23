@@ -14,8 +14,8 @@ android {
         applicationId = "com.github.releaseuploader"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
+        versionName = "1.0.${(project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1}"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
