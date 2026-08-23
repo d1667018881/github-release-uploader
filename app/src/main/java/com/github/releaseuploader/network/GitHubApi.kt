@@ -1,7 +1,6 @@
 package com.github.releaseuploader.network
 
 import com.github.releaseuploader.data.model.*
-import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -40,18 +39,11 @@ interface GitHubApi {
         @Body request: CreateReleaseRequest
     ): Response<Release>
 
-    @Multipart
+    // GitHub 上传 Release 附件走 raw body + ?name= 查询参数，不是 multipart。
+    // uploadUrl 需先用 GitHubRepository.resolveUploadUrl() 把 {?name,label} 模板替换为 ?name=<fileName>。
     @POST
     suspend fun uploadReleaseAsset(
         @Url uploadUrl: String,
-        @Part file: MultipartBody.Part
-    ): Response<ResponseBody>
-
-    @Multipart
-    @POST
-    suspend fun uploadReleaseAssetWithName(
-        @Url uploadUrl: String,
-        @Part file: MultipartBody.Part,
-        @Part("name") name: RequestBody
+        @Body file: RequestBody
     ): Response<ResponseBody>
 }

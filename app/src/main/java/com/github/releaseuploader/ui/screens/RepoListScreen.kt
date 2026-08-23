@@ -24,6 +24,7 @@ import com.github.releaseuploader.ui.viewmodel.RepoListViewModel
 @Composable
 fun RepoListScreen(
     onRepoClick: (String, String) -> Unit,
+    onLoggedOut: () -> Unit,
     viewModel: RepoListViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -31,7 +32,7 @@ fun RepoListScreen(
 
     LaunchedEffect(uiState.isLoggedOut) {
         if (uiState.isLoggedOut) {
-            // Will be handled by navigation
+            onLoggedOut()
         }
     }
 
@@ -52,7 +53,7 @@ fun RepoListScreen(
                 title = { Text("My Repositories") },
                 actions = {
                     if (uiState.isLoggedOut) {
-                        TextButton(onClick = { /* handled by navigation */ }) {
+                        TextButton(onClick = onLoggedOut) {
                             Text("Re-login")
                         }
                     }

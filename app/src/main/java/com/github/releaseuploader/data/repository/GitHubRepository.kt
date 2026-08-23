@@ -6,11 +6,7 @@ import com.github.releaseuploader.data.model.*
 import com.github.releaseuploader.network.GitHubApi
 import com.github.releaseuploader.network.ProgressRequestBody
 import com.github.releaseuploader.utils.Constants
-import kotlinx.coroutines.flow.StateFlow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import retrofit2.Response
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -106,13 +102,22 @@ class GitHubRepository @Inject constructor(
         contentResolver: ContentResolver,
         uri: Uri,
         fileName: String,
-        mimeType: String?
-    ): ProgressRequestBody {
-        val mediaType = mimeType?.toMediaTypeOrNull() ?: "application/octet-stream".toMediaTypeOrNull()
-        val progressBody = ProgressRequestBody(contentResolver, uri, mediaType, fileName)
-        val part = MultipartBody.Part.createFormData("file", fileName, progressBody)
-        api.uploadReleaseAsset(uploadUrl, part)
-        return progressBody
+        mimeType: String?,
+        onProgress: (Float) -> Unit = {}
+    ): Result<Unit> {
+        return try {
+            val mediaType = mimeType?.toMediaTypeOrNull() ?: "application/octet-stream".toMediaTypeOrNull()
+            val progressBody = ProgressRequestBody(contentResolver, uri, mediaType, onProgress)
+            val resolvedUrl = resolveUploadUrl(uploadUrl, fileName)
+            val response = api.uploadReleaseAsset(resolvedUrl, progressBody)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(IOException("Upload failed: ${response.code()} ${response.message()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun uploadAssetWithRetry(
@@ -121,20 +126,34 @@ class GitHubRepository @Inject constructor(
         uri: Uri,
         fileName: String,
         mimeType: String?,
+        onProgress: (Float) -> Unit = {},
         maxRetries: Int = Constants.MAX_UPLOAD_RETRIES
     ): Result<Unit> {
-        var lastException: Exception? = null
+        var lastResult: Result<Unit> = Result.failure(IOException("Upload failed after $maxRetries retries"))
         for (attempt in 1..maxRetries) {
-            try {
-                val progressBody = uploadAsset(uploadUrl, contentResolver, uri, fileName, mimeType)
-                return Result.success(Unit)
-            } catch (e: Exception) {
-                lastException = e
-                if (attempt < maxRetries) {
-                    kotlinx.coroutines.delay(1000L * attempt)
-                }
+            lastResult = uploadAsset(uploadUrl, contentResolver, uri, fileName, mimeType, onProgress)
+            if (lastResult.isSuccess) return lastResult
+            if (attempt < maxRetries) {
+                kotlinx.coroutines.delay(1000L * attempt)
             }
         }
-        return Result.failure(lastException ?: IOException("Upload failed after $maxRetries retries"))
+        return lastResult
+    }
+
+    /**
+     * GitHub createRelease 返回的 upload_url 形如
+     * https://uploads.github.com/repos/{owner}/{repo}/releases/{id}/assets{?name,label}
+     * 上传前必须把 {?name,label} 模板替换为 ?name=<urlencoded fileName>。
+     */
+    private fun resolveUploadUrl(uploadUrl: String, fileName: String): String {
+        val encodedName = Uri.encode(fileName)
+        return when {
+            uploadUrl.contains("{?name,label}") ->
+                uploadUrl.replace("{?name,label}", "?name=$encodedName")
+            uploadUrl.contains("{?name}") ->
+                uploadUrl.replace("{?name}", "?name=$encodedName")
+            uploadUrl.contains("?") -> "$uploadUrl&name=$encodedName"
+            else -> "$uploadUrl?name=$encodedName"
+        }
     }
 }

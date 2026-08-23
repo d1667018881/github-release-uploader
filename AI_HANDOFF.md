@@ -53,6 +53,7 @@ else: print('No releases')
 3. `.github/workflows/android-build.yml` — CI/CD 配置
 4. `app/build.gradle.kts` — 依赖与版本
 5. `settings.gradle.kts` — 项目设置
+6. 本文档第八节「已知坑与易错点」— 接手必读，避免踩雷
 
 ---
 
@@ -86,6 +87,24 @@ git commit -m "描述修改内容"
 git push origin main
 ```
 
+### 多文件一次性提交（推荐，避免多次 API 调用踩 SHA）
+
+当需要一次改多个文件（如联动修改 ViewModel + Screen + Repository）时，**不要**用上面单个 contents API 逐个 PUT（每个文件单独 commit，且容易丢 SHA）。改用 **Git Data API 的 base_tree 增量提交**，把多个文件合成一个 commit：
+
+```bash
+# 1. 取当前分支最新 commit 的 tree SHA
+HEAD_SHA=$(curl -s "https://api.github.com/repos/${REPO}/git/refs/heads/main" \
+  -H "Authorization: token $TOKEN" | python3 -c "import sys,json; print(json.load(sys.stdin)['object']['sha'])")
+BASE_TREE=$(curl -s "https://api.github.com/repos/${REPO}/git/commits/${HEAD_SHA}" \
+  -H "Authorization: token $TOKEN" | python3 -c "import sys,json; print(json.load(sys.stdin)['tree']['sha'])")
+
+# 2. 每个文件生成一个 tree item（用 git hash-object 或本地 blob），带 base_tree 建新 tree
+# 3. 用新 tree 建 commit，parent 指向 HEAD_SHA
+# 4. PATCH /repos/${REPO}/git/refs/heads/main 更新分支指针
+```
+
+要点：`base_tree` 只传**改动文件**的 blob，未改文件自动继承 base_tree，最终一次性更新分支，触发一次 CI。
+
 ---
 
 ## 四、构建监控与自动修复
@@ -93,8 +112,10 @@ git push origin main
 ### 监控构建状态
 
 ```bash
-for i in $(seq 1 40); do
-    sleep 15
+sleep 300  # 首次等 5 分钟再查（Android 构建需下载依赖较慢），之后每 30s 轮询一次
+
+for i in $(seq 1 60); do
+    sleep 30
     RESULT=$(curl -s "https://api.github.com/repos/${REPO}/actions/runs?per_page=1" \
       -H "Authorization: token $TOKEN" \
       -H "Accept: application/vnd.github+json")
@@ -247,8 +268,31 @@ implementation("group:artifact:version")
 - 删除 `permissions: contents: write` 权限
 - 修改 Release 的签名配置（必须使用 Debug 签名）
 - 硬编码 Token 或密钥到代码中
+- 把真实 Token 写进 AI_HANDOFF.md / README / commit message / issue（占位用 `ghp_xxx` 即可）
 - 修改 `gradle-wrapper.properties` 中的 distributionUrl 为不兼容版本
 - 在未验证兼容性的情况下大幅度升级 Gradle/AGP/Kotlin
+
+### ⚠️ 已知坑与易错点（接手必读）
+
+#### 上传链路（最容易踩的坑）
+
+- **上传协议是 raw body，不是 multipart**：`GitHubApi.uploadReleaseAsset` 用 `@Body RequestBody` POST 到 `uploads.github.com`，不是 `@Multipart`。
+- **upload_url 必须替换模板**：`createRelease` 返回的 `upload_url` 形如 `.../assets{?name,label}`，必须经 `GitHubRepository.resolveUploadUrl()` 替换为 `?name=<urlencoded fileName>` 再上传，否则 422。
+- **uploadUrl 的流向**：`createRelease` 成功后写入 `RepoDetailUiState.uploadUrl`，文件选择器回调从 `viewModel.uiState.value.uploadUrl` 读取。不要在 Screen 里重新拼 URL。
+- **上传进度是真实的**：`ProgressRequestBody` 用 `openFileDescriptor().statSize` 取长度、按字节块回调 `onProgress`。不要改回 `stream.available()`（对 content:// 流不准确，进度条会错）。
+- **前台服务必须 `ContextCompat.startForegroundService()`**，不能直接 `startService()`（Android 8+）。
+
+#### 安全红线
+
+- Release 用 **debug 签名**（keystore 公开），任何人可伪造升级包，仅适合个人自用，勿对外分发。
+- `HttpLoggingInterceptor` 已设为 debug=BASIC / release=NONE，**不要改回 `BODY`**（会把 Authorization header 的 Token 打进 logcat）。
+- `android:allowBackup="false"` 且已移除 `usesCleartextTraffic`，勿改回，否则 Token 有泄露风险。
+
+#### 其他已知限制
+
+- `CodeBrowserScreen` 的「Open in browser」仍硬编码 `blob/main/`，对非 main 默认分支的仓库会 404（TODO：接入 `Repo.defaultBranch`）。
+- `RateLimitInterceptor` 只处理 403 限流（`X-RateLimit-Remaining=0`）；401 是 token 无效。限流置位后触发登出，登录成功时 `reset()` 复位。
+- Android 13+ 需运行时申请 `POST_NOTIFICATIONS` 权限通知才会展示（当前未实现，不影响前台服务运行）。
 
 ---
 

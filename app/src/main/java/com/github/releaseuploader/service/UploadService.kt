@@ -10,23 +10,30 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.github.releaseuploader.data.repository.GitHubRepository
 import com.github.releaseuploader.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.IOException
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class UploadService : Service() {
 
+    @Inject
+    lateinit var repository: GitHubRepository
+
     companion object {
         const val CHANNEL_ID = "upload_channel"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_FILES = "extra_files"
-        const val EXTRA_TAG = "extra_tag"
-        const val EXTRA_OWNER = "extra_owner"
-        const val EXTRA_REPO = "extra_repo"
         const val EXTRA_UPLOAD_URL = "extra_upload_url"
         const val ACTION_STOP = "com.github.releaseuploader.action.STOP"
 
@@ -64,44 +71,55 @@ class UploadService : Service() {
         }
 
         val files = intent?.getStringArrayListExtra(EXTRA_FILES) ?: emptyList()
-        val tag = intent?.getStringExtra(EXTRA_TAG) ?: ""
-        val owner = intent?.getStringExtra(EXTRA_OWNER) ?: ""
-        val repo = intent?.getStringExtra(EXTRA_REPO) ?: ""
         val uploadUrl = intent?.getStringExtra(EXTRA_UPLOAD_URL) ?: ""
+
+        if (files.isEmpty() || uploadUrl.isBlank()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         startForeground(NOTIFICATION_ID, createNotification(0, 0, "Starting upload..."))
 
-        _uploadProgress.value = UploadState(
-            isUploading = true,
-            totalFiles = files.size
-        )
+        _uploadProgress.value = UploadState(isUploading = true, totalFiles = files.size)
 
         serviceScope.launch {
             try {
+                val contentResolver = applicationContext.contentResolver
                 for ((index, file) in files.withIndex()) {
                     if (!isActive) break
                     val uri = Uri.parse(file)
-                    val fileName = uri.lastPathSegment ?: "file_${index}"
+                    val fileName = uri.lastPathSegment ?: "file_$index"
+                    val mimeType = contentResolver.getType(uri)
 
                     _uploadProgress.value = _uploadProgress.value.copy(
                         currentFile = fileName,
                         fileIndex = index + 1,
                         fileProgress = 0f
                     )
+                    updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
 
-                    updateNotification(
-                        index + 1,
-                        files.size,
-                        "Uploading $fileName (${index + 1}/${files.size})"
-                    )
-
-                    for (p in 1..100 step 10) {
-                        delay(200)
+                    val result = repository.uploadAssetWithRetry(
+                        uploadUrl = uploadUrl,
+                        contentResolver = contentResolver,
+                        uri = uri,
+                        fileName = fileName,
+                        mimeType = mimeType
+                    ) { progress ->
                         _uploadProgress.value = _uploadProgress.value.copy(
-                            fileProgress = p.toFloat(),
-                            overallProgress = ((index.toFloat() + p / 100f) / files.size) * 100f
+                            fileProgress = progress,
+                            overallProgress = ((index.toFloat() + progress / 100f) / files.size) * 100f
                         )
+                        updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
                     }
+
+                    if (result.isFailure) {
+                        throw result.exceptionOrNull() ?: IOException("Upload failed: $fileName")
+                    }
+
+                    _uploadProgress.value = _uploadProgress.value.copy(
+                        fileProgress = 100f,
+                        overallProgress = ((index + 1).toFloat() / files.size) * 100f
+                    )
                 }
 
                 _uploadProgress.value = _uploadProgress.value.copy(
@@ -109,7 +127,6 @@ class UploadService : Service() {
                     isUploading = false,
                     overallProgress = 100f
                 )
-
                 updateNotification(files.size, files.size, "Upload complete!")
             } catch (e: Exception) {
                 _uploadProgress.value = _uploadProgress.value.copy(

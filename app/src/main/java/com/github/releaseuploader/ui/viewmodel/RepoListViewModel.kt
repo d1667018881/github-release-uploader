@@ -75,7 +75,7 @@ class RepoListViewModel @Inject constructor(
             repository.getUserRepos(nextPage).fold(
                 onSuccess = { repos ->
                     _uiState.value = _uiState.value.copy(
-                        repos = state.repos + repos,
+                        repos = _uiState.value.repos + repos,
                         isLoadingMore = false,
                         hasMore = repos.size >= 30,
                         currentPage = nextPage

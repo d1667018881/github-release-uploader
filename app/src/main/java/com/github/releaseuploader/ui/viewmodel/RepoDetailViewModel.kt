@@ -16,7 +16,8 @@ data class RepoDetailUiState(
     val currentPath: String = "",
     val releaseTag: String = "",
     val showReleaseDialog: Boolean = false,
-    val isCreatingRelease: Boolean = false
+    val isCreatingRelease: Boolean = false,
+    val uploadUrl: String = ""
 )
 
 @HiltViewModel
@@ -69,7 +70,8 @@ class RepoDetailViewModel @Inject constructor(
                 onSuccess = { release ->
                     _uiState.value = _uiState.value.copy(
                         isCreatingRelease = false,
-                        showReleaseDialog = false
+                        showReleaseDialog = false,
+                        uploadUrl = release.uploadUrl
                     )
                     onSuccess(release.uploadUrl)
                 },

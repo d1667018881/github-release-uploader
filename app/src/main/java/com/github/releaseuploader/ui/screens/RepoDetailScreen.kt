@@ -3,6 +3,7 @@ package com.github.releaseuploader.ui.screens
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,21 +37,16 @@ fun RepoDetailScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            val uploadUrl = uiState.releaseTag.let {
-                // Use the stored upload URL from create release
-                ""
-            }
+            val uploadUrl = viewModel.uiState.value.uploadUrl
             if (uploadUrl.isNotBlank()) {
                 val intent = Intent(context, UploadService::class.java).apply {
                     putStringArrayListExtra(
                         UploadService.EXTRA_FILES,
                         ArrayList(uris.map { it.toString() })
                     )
-                    putExtra(UploadService.EXTRA_OWNER, owner)
-                    putExtra(UploadService.EXTRA_REPO, repo)
                     putExtra(UploadService.EXTRA_UPLOAD_URL, uploadUrl)
                 }
-                context.startService(intent)
+                ContextCompat.startForegroundService(context, intent)
             }
         }
     }
@@ -82,7 +78,7 @@ fun RepoDetailScreen(
                 TextButton(
                     onClick = {
                         viewModel.setReleaseTag(tagInput)
-                        viewModel.createRelease(owner, repo) { uploadUrl ->
+                        viewModel.createRelease(owner, repo) { _ ->
                             filePickerLauncher.launch(arrayOf("*/*"))
                         }
                     },

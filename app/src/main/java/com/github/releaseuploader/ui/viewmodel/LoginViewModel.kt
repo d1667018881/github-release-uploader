@@ -48,6 +48,7 @@ class LoginViewModel @Inject constructor(
             tokenManager.saveToken(token)
             repository.getCurrentUser().fold(
                 onSuccess = {
+                    rateLimitInterceptor.reset()
                     _uiState.value = LoginUiState(isLoggedIn = true, isLoading = false)
                 },
                 onFailure = { e ->

@@ -7,8 +7,6 @@ import okhttp3.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class RateLimitExceededException(message: String) : Exception(message)
-
 @Singleton
 class RateLimitInterceptor @Inject constructor() : Interceptor {
 
@@ -18,14 +16,19 @@ class RateLimitInterceptor @Inject constructor() : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
 
-        if (response.code == 401 || response.code == 403) {
-            val remaining = response.header("X-RateLimit-Remaining")?.toIntOrNull() ?: -1
+        // GitHub 限流返回 403 且 X-RateLimit-Remaining=0；401 是 token 无效，不在此处理。
+        // 不再 throw，让响应正常返回，由 Repository 的 Result 统一上报错误。
+        if (response.code == 403) {
+            val remaining = response.header("X-RateLimit-Remaining")?.toIntOrNull()
             if (remaining == 0) {
                 _rateLimitExceeded.value = true
-                throw RateLimitExceededException("API rate limit exceeded. Please try again later.")
             }
         }
 
         return response
+    }
+
+    fun reset() {
+        _rateLimitExceeded.value = false
     }
 }

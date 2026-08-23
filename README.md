@@ -46,7 +46,6 @@
 | Security-Crypto | 1.1.0-alpha06 | EncryptedSharedPreferences |
 | Coil | 2.6.0 | 图片加载 |
 | Coroutines | 1.8.1 | 异步编程 |
-| Markwon | 4.6.2 | Markdown 渲染 |
 
 ### 签名配置
 
@@ -174,10 +173,10 @@ github-release-uploader/
 - 添加到请求头：`Accept: application/vnd.github+json`
 
 #### RateLimitInterceptor（限流拦截器）
-- 拦截 HTTP 401/403 响应
+- 拦截 HTTP 403 响应（限流专用，401 token 无效由登录逻辑处理）
 - 读取 `X-RateLimit-Remaining` Header
-- 若为 0，通过 `StateFlow` 抛出 `RateLimitExceededException`
-- UI 层捕获后强制退出登录
+- 若为 0，通过 `StateFlow` 置位 `rateLimitExceeded`（不抛异常）
+- UI 层观察到后强制退出登录，重新登录成功时自动 `reset()`
 
 ### GitHub API 接口
 
@@ -187,7 +186,7 @@ github-release-uploader/
 | GET | `/user/repos?per_page=30&page={page}` | 分页获取仓库列表 |
 | GET | `/repos/{owner}/{repo}/contents/{path}` | 获取目录/文件内容 |
 | POST | `/repos/{owner}/{repo}/releases` | 创建 Release |
-| POST | `{upload_url}` | 上传 Release 附件 |
+| POST | `{upload_url}?name={file}` | 上传 Release 附件（raw body，非 multipart） |
 
 ---
 
@@ -222,9 +221,9 @@ github-release-uploader/
 - 弹出 Dialog 输入 Tag 名（如 `v1.0.0`）
 - 调用 API 创建 Release
 - 自动打开文件选择器（`OpenMultipleDocuments`，`*/*` MIME）
-- 多文件选择后通过前台服务上传
+- 多文件选择后通过前台服务真实上传（`UploadService` 注入 `GitHubRepository`）
 - `ProgressRequestBody` 按字节块计算上传进度
-- 协程 `retry(3)` 失败自动重试
+- 失败自动重试（默认 3 次，`uploadAssetWithRetry`）
 
 ### 5. 前台服务（UploadService）
 
@@ -439,4 +438,11 @@ MIT License
 
 ---
 
+*最后更新：2026-08-23*se
+
+---
+
+*最启�
+
+新：2026-08-23*
 *最后更新：2026-08-23*

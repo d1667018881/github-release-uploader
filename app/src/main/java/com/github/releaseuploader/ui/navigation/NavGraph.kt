@@ -36,6 +36,11 @@ fun NavGraph(navController: NavHostController) {
             RepoListScreen(
                 onRepoClick = { owner, repo ->
                     navController.navigate(Screen.RepoDetail.createRoute(owner, repo))
+                },
+                onLoggedOut = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.RepoList.route) { inclusive = true }
+                    }
                 }
             )
         }
