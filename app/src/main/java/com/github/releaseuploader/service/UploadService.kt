@@ -4,14 +4,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.github.releaseuploader.R
 import com.github.releaseuploader.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -21,9 +19,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class UploadService : Service() {
-
-    @Inject
-    lateinit var contentResolver: ContentResolver
 
     companion object {
         const val CHANNEL_ID = "upload_channel"
@@ -100,7 +95,6 @@ class UploadService : Service() {
                         "Uploading $fileName (${index + 1}/${files.size})"
                     )
 
-                    // Simulate progress for now
                     for (p in 1..100 step 10) {
                         delay(200)
                         _uploadProgress.value = _uploadProgress.value.copy(
