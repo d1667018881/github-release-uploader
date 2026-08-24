@@ -1,6 +1,7 @@
 package com.github.releaseuploader.network
 
 import com.github.releaseuploader.data.model.*
+import com.github.releaseuploader.utils.Constants
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response

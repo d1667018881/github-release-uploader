@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.releaseuploader.data.model.Repo
 import com.github.releaseuploader.ui.viewmodel.RepoListViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +39,7 @@ fun RepoListScreen(
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo }
+            .distinctUntilChanged()
             .collect { layoutInfo ->
                 val totalItems = layoutInfo.totalItemsCount
                 val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -105,7 +107,7 @@ fun RepoListScreen(
 }
 
 @Composable
-fun RepoItem(repo: Repo, onClick: () -> Unit) {
+private fun RepoItem(repo: Repo, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()

@@ -2,6 +2,7 @@ package com.github.releaseuploader.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.releaseuploader.data.local.SessionManager
 import com.github.releaseuploader.data.model.ContentItem
 import com.github.releaseuploader.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,16 +19,27 @@ data class RepoDetailUiState(
     val showReleaseDialog: Boolean = false,
     val isCreatingRelease: Boolean = false,
     val uploadUrl: String = "",
-    val releaseError: String? = null
+    val releaseError: String? = null,
+    val isLoggedOut: Boolean = false
 )
 
 @HiltViewModel
 class RepoDetailViewModel @Inject constructor(
-    private val repository: GitHubRepository
+    private val repository: GitHubRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RepoDetailUiState())
     val uiState: StateFlow<RepoDetailUiState> = _uiState.asStateFlow()
+
+    init {
+        // 限流登出时同步响应，导航回登录页（否则用户停留时后续请求用空 token 得 401）
+        viewModelScope.launch {
+            sessionManager.loggedOut.collect {
+                _uiState.value = _uiState.value.copy(isLoggedOut = true)
+            }
+        }
+    }
 
     fun loadContents(owner: String, repo: String, path: String = "") {
         viewModelScope.launch {

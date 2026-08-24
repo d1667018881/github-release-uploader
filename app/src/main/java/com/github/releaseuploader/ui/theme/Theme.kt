@@ -23,9 +23,14 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    primary = GitHubLightPrimary,
+    secondary = GitHubLightSecondary,
+    tertiary = GitHubLightTertiary,
+    background = androidx.compose.ui.graphics.Color.White,
+    surface = GitHubLightSurface,
+    onPrimary = androidx.compose.ui.graphics.Color.White,
+    onBackground = GitHubLightOn,
+    onSurface = GitHubLightOn
 )
 
 @Composable

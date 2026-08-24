@@ -67,6 +67,11 @@ fun NavGraph(navController: NavHostController) {
                 onFileClick = { path ->
                     navController.navigate(Screen.CodeBrowser.createRoute(owner, repo, branch, path))
                 },
+                onLoggedOut = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -89,6 +94,11 @@ fun NavGraph(navController: NavHostController) {
                 repo = repo,
                 branch = branch,
                 path = path,
+                onLoggedOut = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
                 onBack = { navController.popBackStack() }
             )
         }

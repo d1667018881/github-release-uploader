@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.github.releaseuploader.data.repository.GitHubRepository
 import com.github.releaseuploader.ui.MainActivity
@@ -49,6 +50,7 @@ class UploadService : Service() {
     lateinit var repository: GitHubRepository
 
     companion object {
+        const val TAG = "UploadService"
         const val CHANNEL_ID = "upload_channel"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_FILES = "extra_files"
@@ -78,8 +80,10 @@ class UploadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            // 取消上传协程（通知栏 Cancel 按钮触发）
+            serviceScope.cancel()
             isUploading = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -190,6 +194,7 @@ class UploadService : Service() {
                 if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
             }
         } catch (e: Exception) {
+            Log.w(TAG, "queryDisplayName failed for $uri", e)
             null
         }
     }
@@ -224,7 +229,16 @@ class UploadService : Service() {
             .setAutoCancel(!ongoing)
             .setProgress(total, current, total == 0)
             .setContentIntent(createPendingIntent())
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", createCancelPendingIntent())
             .build()
+
+    private fun createCancelPendingIntent(): PendingIntent {
+        val intent = Intent(this, UploadService::class.java).apply { action = ACTION_STOP }
+        return PendingIntent.getService(
+            this, 1, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
 
     private fun updateNotification(current: Int, total: Int, message: String, ongoing: Boolean = true) {
         val notification = createNotification(current, total, message, ongoing)

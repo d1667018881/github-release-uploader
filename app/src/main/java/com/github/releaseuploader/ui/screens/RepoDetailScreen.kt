@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +34,7 @@ fun RepoDetailScreen(
     repo: String,
     branch: String,
     onFileClick: (String) -> Unit,
+    onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: RepoDetailViewModel = hiltViewModel()
 ) {
@@ -40,8 +42,9 @@ fun RepoDetailScreen(
     val uploadState by UploadService.uploadProgress.collectAsState()
     val context = LocalContext.current
 
-    // 流程修正：先选文件 → 再建 Release → 成功后立即上传（避免取消选择留下空 Release）
-    var pendingUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    // 流程修正：先选文件 → 再建 Release → 成功后立即上传（避免取消选择留下空 Release）。
+    // rememberSaveable 存 String 列表（Uri 非自动可保存），旋转屏幕不丢已选文件
+    var pendingUris by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
 
     // Android 13+ 通知权限（不授权也能上传，只是进度通知不显示）
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -66,22 +69,33 @@ fun RepoDetailScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            pendingUris = uris
+            pendingUris = uris.map { it.toString() }
             viewModel.createRelease(owner, repo) { uploadUrl ->
                 if (uploadUrl.isNotBlank() && pendingUris.isNotEmpty()) {
-                    startUpload(uploadUrl, pendingUris)
+                    startUpload(uploadUrl, pendingUris.map { Uri.parse(it) })
                 }
             }
         }
     }
 
+    // 限流登出时导航回登录页
+    LaunchedEffect(uiState.isLoggedOut) {
+        if (uiState.isLoggedOut) {
+            onLoggedOut()
+        }
+    }
+
     LaunchedEffect(Unit) {
+        // 页面进入时重置非上传中的残留进度（避免看到上次的旧 "Upload complete!"）
+        if (!UploadService.uploadProgress.value.isUploading) {
+            UploadService.resetState()
+        }
         viewModel.loadContents(owner, repo)
     }
 
     // Release Dialog
     if (uiState.showReleaseDialog) {
-        var tagInput by remember { mutableStateOf("") }
+        var tagInput by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { viewModel.hideReleaseDialog() },
             title = { Text("Create Release") },
@@ -235,7 +249,7 @@ private fun UploadProgressBanner(state: UploadState) {
 }
 
 @Composable
-fun ContentItemRow(item: ContentItem, onClick: () -> Unit) {
+private fun ContentItemRow(item: ContentItem, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(item.name) },
         supportingContent = {

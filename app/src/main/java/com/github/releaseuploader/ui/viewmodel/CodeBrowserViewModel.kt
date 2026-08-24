@@ -3,6 +3,7 @@ package com.github.releaseuploader.ui.viewmodel
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.releaseuploader.data.local.SessionManager
 import com.github.releaseuploader.data.model.ContentItem
 import com.github.releaseuploader.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,16 +17,27 @@ data class CodeBrowserUiState(
     val content: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
-    val fileName: String = ""
+    val fileName: String = "",
+    val isLoggedOut: Boolean = false
 )
 
 @HiltViewModel
 class CodeBrowserViewModel @Inject constructor(
-    private val repository: GitHubRepository
+    private val repository: GitHubRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CodeBrowserUiState())
     val uiState: StateFlow<CodeBrowserUiState> = _uiState.asStateFlow()
+
+    init {
+        // 限流登出时同步响应，导航回登录页
+        viewModelScope.launch {
+            sessionManager.loggedOut.collect {
+                _uiState.value = _uiState.value.copy(isLoggedOut = true)
+            }
+        }
+    }
 
     fun loadFile(owner: String, repo: String, path: String) {
         viewModelScope.launch {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ 数据提取规则：排除加密 Token 的 SharedPreferences 文件，
+     防止云备份/设备迁移泄露 GitHub Token -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="github_secure_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="github_secure_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

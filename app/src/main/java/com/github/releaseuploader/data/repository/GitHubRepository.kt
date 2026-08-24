@@ -2,6 +2,7 @@ package com.github.releaseuploader.data.repository
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.util.Log
 import com.github.releaseuploader.data.model.*
 import com.github.releaseuploader.network.ApiException
 import com.github.releaseuploader.network.GitHubApi
@@ -35,18 +36,20 @@ class GitHubRepository @Inject constructor(
         }
     }
 
-    suspend fun getCurrentUser(): Result<User> = safeApiCall { api.getCurrentUser() }
+    // GET 请求带重试（网络抖动时自动重试一次）；POST 不重试
+    suspend fun getCurrentUser(): Result<User> = safeApiCall({ api.getCurrentUser() }, retryable = true)
 
-    suspend fun getUserRepos(page: Int): Result<List<Repo>> = safeApiCall {
-        api.getUserRepos(perPage = Constants.PER_PAGE, page = page)
-    }
+    suspend fun getUserRepos(page: Int): Result<List<Repo>> = safeApiCall(
+        { api.getUserRepos(perPage = Constants.PER_PAGE, page = page) },
+        retryable = true
+    )
 
     suspend fun getContents(owner: String, repo: String, path: String): Result<List<ContentItem>> {
         val key = "$owner/$repo/$path"
         synchronized(cacheLock) {
             contentsCache[key]?.let { return Result.success(it) }
         }
-        return safeApiCall { api.getContents(owner, repo, path) }.onSuccess { contents ->
+        return safeApiCall({ api.getContents(owner, repo, path) }, retryable = true).onSuccess { contents ->
             synchronized(cacheLock) {
                 contentsCache[key] = contents
                 trimCache(contentsCache, Constants.MAX_CONTENTS_CACHE_SIZE)
@@ -59,7 +62,7 @@ class GitHubRepository @Inject constructor(
         synchronized(cacheLock) {
             fileCache[key]?.let { return Result.success(it) }
         }
-        val result = safeApiCall { api.getFileContent(owner, repo, path) }
+        val result = safeApiCall({ api.getFileContent(owner, repo, path) }, retryable = true)
         return result.fold(
             onSuccess = { item ->
                 if (item.size > Constants.MAX_FILE_SIZE_BYTES) {
@@ -73,10 +76,13 @@ class GitHubRepository @Inject constructor(
                 }
             },
             onFailure = { e ->
-                synchronized(cacheLock) {
-                    fileCache[key]?.let { return@fold Result.success(it) }
+                val cached = synchronized(cacheLock) { fileCache[key] }
+                if (cached != null) {
+                    Log.w(TAG, "Network failed for $key, returning cached data: ${e.message}")
+                    Result.success(cached)
+                } else {
+                    Result.failure(e)
                 }
-                Result.failure(e)
             }
         )
     }
@@ -87,29 +93,11 @@ class GitHubRepository @Inject constructor(
         tagName: String,
         name: String? = null,
         body: String? = null
-    ): Result<Release> {
-        return try {
-            val request = CreateReleaseRequest(
-                tagName = tagName,
-                name = name ?: tagName,
-                body = body
-            )
-            val response = api.createRelease(owner, repo, request)
-            if (response.isSuccessful) {
-                val body = response.body()
-                if (body != null) {
-                    Result.success(body)
-                } else {
-                    Result.failure(ApiException(response.code(), "Empty response body"))
-                }
-            } else {
-                Result.failure(ApiException(response.code(), "Failed to create release: ${response.code()} ${response.message()}"))
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    ): Result<Release> = safeApiCall {
+        api.createRelease(
+            owner, repo,
+            CreateReleaseRequest(tagName = tagName, name = name ?: tagName, body = body)
+        )
     }
 
     suspend fun uploadAsset(
@@ -120,21 +108,10 @@ class GitHubRepository @Inject constructor(
         mimeType: String?,
         onProgress: (Float) -> Unit = {}
     ): Result<Unit> {
-        return try {
-            val mediaType = mimeType?.toMediaTypeOrNull() ?: "application/octet-stream".toMediaTypeOrNull()
-            val progressBody = ProgressRequestBody(contentResolver, uri, mediaType, onProgress)
-            val resolvedUrl = resolveUploadUrl(uploadUrl, fileName)
-            val response = api.uploadReleaseAsset(resolvedUrl, progressBody)
-            if (response.isSuccessful) {
-                Result.success(Unit)
-            } else {
-                Result.failure(ApiException(response.code(), "Upload failed: ${response.code()} ${response.message()}"))
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        val mediaType = mimeType?.toMediaTypeOrNull() ?: "application/octet-stream".toMediaTypeOrNull()
+        val progressBody = ProgressRequestBody(contentResolver, uri, mediaType, onProgress)
+        val resolvedUrl = resolveUploadUrl(uploadUrl, fileName)
+        return safeApiCall { api.uploadReleaseAsset(resolvedUrl, progressBody) }.map { }
     }
 
     suspend fun uploadAssetWithRetry(
@@ -175,25 +152,43 @@ class GitHubRepository @Inject constructor(
         }
     }
 
-    /** 统一的 API 调用包装：取消透传 + 空 body 防护 + HTTP 错误带状态码 */
-    private suspend fun <T> safeApiCall(call: suspend () -> Response<T>): Result<T> {
-        return try {
-            val response = call()
-            if (response.isSuccessful) {
-                val body = response.body()
-                if (body != null) {
-                    Result.success(body)
+    /**
+     * 统一的 API 调用包装：取消透传 + 空 body 防护 + HTTP 错误带状态码。
+     * retryable=true（GET）时对网络错误/5xx 自动重试一次。
+     */
+    private suspend fun <T> safeApiCall(
+        call: suspend () -> Response<T>,
+        retryable: Boolean = false
+    ): Result<T> {
+        val maxAttempts = if (retryable) Constants.MAX_GET_RETRIES else 1
+        var lastResult: Result<T>? = null
+        for (attempt in 1..maxAttempts) {
+            lastResult = try {
+                val response = call()
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body != null) {
+                        Result.success(body)
+                    } else {
+                        Result.failure(ApiException(response.code(), "Empty response body"))
+                    }
                 } else {
-                    Result.failure(ApiException(response.code(), "Empty response body"))
+                    Result.failure(ApiException(response.code(), "HTTP ${response.code()} ${response.message()}"))
                 }
-            } else {
-                Result.failure(ApiException(response.code(), "HTTP ${response.code()} ${response.message()}"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
+            if (lastResult.isSuccess) break
+            val canRetry = lastResult.exceptionOrNull()?.let { shouldRetry(it) } == true
+            if (attempt < maxAttempts && canRetry) {
+                kotlinx.coroutines.delay(500L * attempt)
+            } else {
+                break
+            }
         }
+        return lastResult ?: Result.failure(IOException("Request failed"))
     }
 
     private fun shouldRetry(e: Throwable?): Boolean = when (e) {
@@ -206,5 +201,9 @@ class GitHubRepository @Inject constructor(
         while (cache.size > maxSize) {
             cache.remove(cache.keys.first())
         }
+    }
+
+    private companion object {
+        const val TAG = "GitHubRepository"
     }
 }

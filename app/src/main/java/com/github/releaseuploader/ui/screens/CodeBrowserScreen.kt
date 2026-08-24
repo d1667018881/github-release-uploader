@@ -27,18 +27,28 @@ fun CodeBrowserScreen(
     repo: String,
     branch: String,
     path: String,
+    onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: CodeBrowserViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    // 限流登出时导航回登录页
+    LaunchedEffect(uiState.isLoggedOut) {
+        if (uiState.isLoggedOut) {
+            onLoggedOut()
+        }
+    }
+
     LaunchedEffect(path) {
         viewModel.loadFile(owner, repo, path)
     }
 
+    // URL 每段单独 Uri.encode，避免 path/branch 含空格或特殊字符时 URL 损坏
+    val encodedPath = path.split("/").joinToString("/") { Uri.encode(it) }
     val openInBrowser: () -> Unit = {
-        val url = "https://github.com/$owner/$repo/blob/$branch/$path"
+        val url = "https://github.com/$owner/$repo/blob/${Uri.encode(branch)}/$encodedPath"
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 

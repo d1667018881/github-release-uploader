@@ -2,6 +2,7 @@ package com.github.releaseuploader.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.releaseuploader.data.local.LogoutReason
 import com.github.releaseuploader.data.local.SessionManager
 import com.github.releaseuploader.data.local.TokenManager
 import com.github.releaseuploader.data.repository.GitHubRepository
@@ -34,10 +35,14 @@ class LoginViewModel @Inject constructor(
         }
         // 限流导致的登出由 SessionManager 统一处理，这里只响应事件更新 UI
         viewModelScope.launch {
-            sessionManager.loggedOut.collect {
-                _uiState.value = LoginUiState(
-                    error = "API rate limit exceeded. You have been logged out."
-                )
+            sessionManager.loggedOut.collect { reason ->
+                if (reason == LogoutReason.RATE_LIMIT) {
+                    _uiState.value = LoginUiState(
+                        error = "API rate limit exceeded. You have been logged out."
+                    )
+                } else {
+                    _uiState.value = LoginUiState(isLoggedIn = false)
+                }
             }
         }
     }

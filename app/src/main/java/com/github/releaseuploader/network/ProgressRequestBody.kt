@@ -5,6 +5,7 @@ import android.net.Uri
 import okhttp3.MediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
+import java.io.IOException
 
 class ProgressRequestBody(
     private val contentResolver: ContentResolver,
@@ -13,10 +14,9 @@ class ProgressRequestBody(
     private val onProgress: (Float) -> Unit = {}
 ) : RequestBody() {
 
-    override fun contentType(): MediaType? = mediaType
-
-    override fun contentLength(): Long {
-        return try {
+    // 缓存长度：OkHttp 会多次调用 contentLength()，避免每次都开/关 FileDescriptor
+    private val cachedLength: Long by lazy {
+        try {
             contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                 val size = pfd.statSize
                 if (size >= 0) size else -1L
@@ -26,15 +26,22 @@ class ProgressRequestBody(
         }
     }
 
-    override fun writeTo(sink: BufferedSink) {
-        val totalBytes = contentLength()
+    override fun contentType(): MediaType? = mediaType
 
-        contentResolver.openInputStream(uri)?.use { inputStream ->
+    override fun contentLength(): Long = cachedLength
+
+    override fun writeTo(sink: BufferedSink) {
+        val totalBytes = cachedLength
+        // openInputStream 为 null（URI 权限丢失/文件被删）必须抛异常，
+        // 不能静默跳过导致 OkHttp 发送 0 字节 body 却显示上传成功
+        val inputStream = contentResolver.openInputStream(uri)
+            ?: throw IOException("Cannot open input stream for URI: $uri")
+        inputStream.use { stream ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             var uploadedBytes = 0L
             var bytesRead: Int
 
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+            while (stream.read(buffer).also { bytesRead = it } != -1) {
                 sink.write(buffer, 0, bytesRead)
                 uploadedBytes += bytesRead
                 if (totalBytes > 0) {

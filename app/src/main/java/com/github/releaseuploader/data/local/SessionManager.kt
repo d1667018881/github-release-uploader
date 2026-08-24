@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 登出原因：限流触发 vs 手动登出，UI 据此决定是否提示错误 */
+enum class LogoutReason { RATE_LIMIT, MANUAL }
+
 /**
  * 会话管理单例：统一收敛「限流 → 登出」逻辑。
  * 之前 LoginViewModel / RepoListViewModel 各自 collect 限流状态并实现登出，逻辑重复且脆弱。
@@ -22,20 +25,21 @@ import javax.inject.Singleton
 class SessionManager @Inject constructor(
     private val tokenManager: TokenManager,
     private val repository: GitHubRepository,
-    rateLimitInterceptor: RateLimitInterceptor
+    private val rateLimitInterceptor: RateLimitInterceptor
 ) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // 事件型（非状态型）：登出事件不重放，避免限流后新建页面一 collect 就误登出
-    private val _loggedOut = MutableSharedFlow<Unit>()
-    val loggedOut: SharedFlow<Unit> = _loggedOut.asSharedFlow()
+    // 事件型（非状态型）：登出事件不重放，避免限流后新建页面一 collect 就误登出；
+    // 携带原因，区分限流登出（需提示）与手动登出（正常操作，不提示错误）
+    private val _loggedOut = MutableSharedFlow<LogoutReason>()
+    val loggedOut: SharedFlow<LogoutReason> = _loggedOut.asSharedFlow()
 
     init {
         rateLimitInterceptor.rateLimitExceeded
             .onEach { exceeded ->
                 if (exceeded) {
-                    forceLogout()
+                    forceLogout(LogoutReason.RATE_LIMIT)
                 }
             }
             .launchIn(scope)
@@ -43,12 +47,14 @@ class SessionManager @Inject constructor(
 
     /** 统一登出入口：手动登出也走这里，保证清缓存逻辑一致 */
     fun logout() {
-        forceLogout()
+        forceLogout(LogoutReason.MANUAL)
     }
 
-    private fun forceLogout() {
+    private fun forceLogout(reason: LogoutReason) {
         tokenManager.clearAll()
         repository.clearCache()
-        _loggedOut.tryEmit(Unit)
+        // 登出后复位限流状态，避免残留 true（如用户不再重新登录直接退出应用）
+        rateLimitInterceptor.reset()
+        _loggedOut.tryEmit(reason)
     }
 }
