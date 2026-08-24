@@ -51,15 +51,15 @@ fun RepoListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Repositories") },
+                title = { Text("我的仓库") },
                 actions = {
                     if (uiState.isLoggedOut) {
                         TextButton(onClick = onLoggedOut) {
-                            Text("Re-login")
+                            Text("重新登录")
                         }
                     }
                     IconButton(onClick = { viewModel.logout() }) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+                        Icon(Icons.Default.ExitToApp, contentDescription = "退出登录")
                     }
                 }
             )
@@ -73,10 +73,10 @@ fun RepoListScreen(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
+                    Text("错误：${uiState.error}", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(onClick = { viewModel.loadRepos() }) {
-                        Text("Retry")
+                        Text("重试")
                     }
                 }
             } else {

@@ -35,7 +35,7 @@ class ProgressRequestBody(
         // openInputStream 为 null（URI 权限丢失/文件被删）必须抛异常，
         // 不能静默跳过导致 OkHttp 发送 0 字节 body 却显示上传成功
         val inputStream = contentResolver.openInputStream(uri)
-            ?: throw IOException("Cannot open input stream for URI: $uri")
+            ?: throw IOException("无法打开 URI 输入流：$uri")
         inputStream.use { stream ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             var uploadedBytes = 0L

@@ -58,12 +58,12 @@ fun CodeBrowserScreen(
                 title = { Text(uiState.fileName, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.Default.ArrowBack, "返回")
                     }
                 },
                 actions = {
                     IconButton(onClick = openInBrowser) {
-                        Icon(Icons.Default.OpenInBrowser, "Open in browser")
+                        Icon(Icons.Default.OpenInBrowser, "在浏览器打开")
                     }
                 }
             )
@@ -79,11 +79,11 @@ fun CodeBrowserScreen(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
+                        Text("错误：${uiState.error}", color = MaterialTheme.colorScheme.error)
                         if (uiState.error?.contains("too large") == true) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(onClick = openInBrowser) {
-                                Text("Open in Browser")
+                                Text("在浏览器打开")
                             }
                         }
                     }

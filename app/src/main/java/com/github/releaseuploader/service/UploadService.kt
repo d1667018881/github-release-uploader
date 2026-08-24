@@ -120,7 +120,7 @@ class UploadService : Service() {
         // 新上传开始前重置全局进度状态，避免 UI 残留上次上传结果
         resetState()
 
-        startForeground(NOTIFICATION_ID, createNotification(0, 0, "Starting upload..."))
+        startForeground(NOTIFICATION_ID, createNotification(0, 0, "开始上传..."))
 
         _uploadProgress.value = UploadState(isUploading = true, totalFiles = files.size)
 
@@ -129,7 +129,7 @@ class UploadService : Service() {
                 val contentResolver = applicationContext.contentResolver
                 for ((index, file) in files.withIndex()) {
                     // 取消时抛 CancellationException（而非 break 静默退出），
-                    // 交给下方 catch(CancellationException) 走取消收尾，避免部分上传误报 "Upload complete!"
+                    // 交给下方 catch(CancellationException) 走取消收尾，避免部分上传误报 "上传完成！"
                     ensureActive()
                     val uri = Uri.parse(file)
                     // SAF 文档 URI 的 lastPathSegment 不是真实文件名（如 primary:Download/app.apk），
@@ -143,7 +143,7 @@ class UploadService : Service() {
                         fileIndex = index + 1,
                         fileProgress = 0f
                     )
-                    updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
+                    updateNotification(index + 1, files.size, "正在上传 $fileName（${index + 1}/${files.size}）")
 
                     // 进度节流：增量 ≥1% 或间隔 ≥250ms 才刷新 StateFlow 和通知，
                     // 避免大文件每 64KB 一次刷新把通知/主线程刷爆
@@ -165,13 +165,13 @@ class UploadService : Service() {
                                     fileProgress = progress,
                                     overallProgress = ((index.toFloat() + progress / 100f) / files.size) * 100f
                                 )
-                                updateNotification(index + 1, files.size, "Uploading $fileName (${index + 1}/${files.size})")
+                                updateNotification(index + 1, files.size, "正在上传 $fileName（${index + 1}/${files.size}）")
                             }
                         }
                     )
 
                     if (result.isFailure) {
-                        throw result.exceptionOrNull() ?: IOException("Upload failed: $fileName")
+                        throw result.exceptionOrNull() ?: IOException("上传失败：$fileName")
                     }
 
                     _uploadProgress.value = _uploadProgress.value.copy(
@@ -185,21 +185,21 @@ class UploadService : Service() {
                     isUploading = false,
                     overallProgress = 100f
                 )
-                updateNotification(files.size, files.size, "Upload complete!", ongoing = false)
+                updateNotification(files.size, files.size, "上传完成！", ongoing = false)
             } catch (e: CancellationException) {
                 // 用户主动取消：正常收尾，不是失败；必须重新抛出保持结构化并发语义
                 _uploadProgress.value = _uploadProgress.value.copy(
                     isUploading = false,
                     error = null
                 )
-                updateNotification(0, files.size, "Upload cancelled", ongoing = false)
+                updateNotification(0, files.size, "上传已取消", ongoing = false)
                 throw e
             } catch (e: Exception) {
                 _uploadProgress.value = _uploadProgress.value.copy(
                     isUploading = false,
                     error = e.message
                 )
-                updateNotification(0, files.size, "Upload failed: ${e.message}", ongoing = false)
+                updateNotification(0, files.size, "上传失败：${e.message}", ongoing = false)
             } finally {
                 // NonCancellable 保证协程被取消时清理逻辑仍执行（普通 finally 中的挂起点会被跳过）
                 withContext(NonCancellable) {
@@ -238,10 +238,10 @@ class UploadService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Upload Progress",
+                "上传进度",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows upload progress"
+                description = "显示上传进度"
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
@@ -250,7 +250,7 @@ class UploadService : Service() {
 
     private fun createNotification(current: Int, total: Int, message: String, ongoing: Boolean = true) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Uploading Release Assets")
+            .setContentTitle("上传 Release 附件")
             .setContentText(message)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(ongoing)
@@ -260,7 +260,7 @@ class UploadService : Service() {
             .apply {
                 // 仅上传中的 ongoing 通知提供 Cancel 按钮；终态通知没有取消入口，语义更干净
                 if (ongoing) {
-                    addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", createCancelPendingIntent())
+                    addAction(android.R.drawable.ic_menu_close_clear_cancel, "取消", createCancelPendingIntent())
                 }
             }
             .build()

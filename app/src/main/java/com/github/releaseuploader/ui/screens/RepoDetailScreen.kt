@@ -96,7 +96,7 @@ fun RepoDetailScreen(
     }
 
     LaunchedEffect(Unit) {
-        // 页面进入时重置非上传中的残留进度（避免看到上次的旧 "Upload complete!"）
+        // 页面进入时重置非上传中的残留进度（避免看到上次的旧 "上传完成！"）
         if (!UploadService.uploadProgress.value.isUploading) {
             UploadService.resetState()
         }
@@ -108,15 +108,15 @@ fun RepoDetailScreen(
         var tagInput by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { viewModel.hideReleaseDialog() },
-            title = { Text("Create Release") },
+            title = { Text("创建 Release") },
             text = {
                 Column {
-                    Text("Enter a tag name for the release:")
+                    Text("输入 Release 标签名：")
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = tagInput,
                         onValueChange = { tagInput = it },
-                        label = { Text("Tag (e.g., v1.0.0)") },
+                        label = { Text("标签（如 v1.0.0）") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -141,13 +141,13 @@ fun RepoDetailScreen(
                     if (uiState.isCreatingRelease) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp))
                     } else {
-                        Text("Choose Files & Upload")
+                        Text("选择文件并上传")
                     }
                 }
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.hideReleaseDialog() }) {
-                    Text("Cancel")
+                    Text("取消")
                 }
             }
         )
@@ -159,12 +159,12 @@ fun RepoDetailScreen(
                 title = { Text(repo) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.Default.ArrowBack, "返回")
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.showReleaseDialog() }) {
-                        Icon(Icons.Default.Upload, "Upload Release")
+                        Icon(Icons.Default.Upload, "上传 Release")
                     }
                 }
             )
@@ -187,10 +187,10 @@ fun RepoDetailScreen(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
+                        Text("错误：${uiState.error}", color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(onClick = { viewModel.loadContents(owner, repo) }) {
-                            Text("Retry")
+                            Text("重试")
                         }
                     }
                 } else {
@@ -201,7 +201,7 @@ fun RepoDetailScreen(
                                 ListItem(
                                     headlineContent = { Text("..") },
                                     leadingContent = {
-                                        Icon(Icons.Default.Folder, "Parent directory")
+                                        Icon(Icons.Default.Folder, "上级目录")
                                     },
                                     modifier = Modifier.clickable {
                                         val parentPath = uiState.currentPath.substringBeforeLast("/")
@@ -238,7 +238,7 @@ private fun UploadProgressBanner(state: UploadState) {
             when {
                 state.isUploading -> {
                     Text(
-                        "Uploading ${state.currentFile} (${state.fileIndex}/${state.totalFiles})",
+                        "正在上传 ${state.currentFile}（${state.fileIndex}/${state.totalFiles}）",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(6.dp))
@@ -248,10 +248,10 @@ private fun UploadProgressBanner(state: UploadState) {
                     )
                 }
                 state.isComplete -> {
-                    Text("Upload complete!", color = MaterialTheme.colorScheme.primary)
+                    Text("上传完成！", color = MaterialTheme.colorScheme.primary)
                 }
                 state.error != null -> {
-                    Text("Upload failed: ${state.error}", color = MaterialTheme.colorScheme.error)
+                    Text("上传失败：${state.error}", color = MaterialTheme.colorScheme.error)
                 }
             }
         }

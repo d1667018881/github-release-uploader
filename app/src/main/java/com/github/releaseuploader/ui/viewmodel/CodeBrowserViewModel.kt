@@ -74,7 +74,7 @@ class CodeBrowserViewModel @Inject constructor(
                 // 显式 UTF-8 解码，避免非 UTF-8 设备上乱码
                 String(Base64.decode(cleanContent, Base64.DEFAULT), Charsets.UTF_8)
             } catch (e: Exception) {
-                "Error decoding file content: ${e.message}"
+                "文件内容解码失败：${e.message}"
             }
         }
         return item.content ?: ""

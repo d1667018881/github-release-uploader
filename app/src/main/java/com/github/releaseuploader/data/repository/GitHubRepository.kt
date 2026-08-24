@@ -65,7 +65,7 @@ class GitHubRepository @Inject constructor(
         return result.fold(
             onSuccess = { item ->
                 if (item.size > Constants.MAX_FILE_SIZE_BYTES) {
-                    Result.failure(IOException("File too large (${item.size} bytes). Please view on GitHub website."))
+                    Result.failure(IOException("文件过大（${item.size} 字节），请在 GitHub 网页端查看。"))
                 } else {
                     synchronized(cacheLock) {
                         fileCache[key] = item
@@ -122,7 +122,7 @@ class GitHubRepository @Inject constructor(
         onProgress: (Float) -> Unit = {},
         maxRetries: Int = Constants.MAX_UPLOAD_RETRIES
     ): Result<Unit> {
-        var lastResult: Result<Unit> = Result.failure(IOException("Upload failed after $maxRetries retries"))
+        var lastResult: Result<Unit> = Result.failure(IOException("重试 $maxRetries 次后上传失败"))
         for (attempt in 1..maxRetries) {
             lastResult = uploadAsset(uploadUrl, contentResolver, uri, fileName, mimeType, onProgress)
             if (lastResult.isSuccess) return lastResult
@@ -170,10 +170,10 @@ class GitHubRepository @Inject constructor(
                     if (body != null) {
                         Result.success(body)
                     } else {
-                        Result.failure(ApiException(response.code(), "Empty response body"))
+                        Result.failure(ApiException(response.code(), "响应体为空"))
                     }
                 } else {
-                    Result.failure(ApiException(response.code(), "HTTP ${response.code()} ${response.message()}"))
+                    Result.failure(ApiException(response.code(), "HTTP 请求失败（${response.code()}）：${response.message()}"))
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -188,7 +188,7 @@ class GitHubRepository @Inject constructor(
                 break
             }
         }
-        return lastResult ?: Result.failure(IOException("Request failed"))
+        return lastResult ?: Result.failure(IOException("请求失败"))
     }
 
     private fun shouldRetry(e: Throwable?): Boolean = when (e) {

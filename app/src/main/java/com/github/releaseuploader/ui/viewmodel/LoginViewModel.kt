@@ -38,7 +38,7 @@ class LoginViewModel @Inject constructor(
             sessionManager.loggedOut.collect { reason ->
                 if (reason == LogoutReason.RATE_LIMIT) {
                     _uiState.value = LoginUiState(
-                        error = "API rate limit exceeded. You have been logged out."
+                        error = "API 限流，已强制退出登录。"
                     )
                 } else {
                     _uiState.value = LoginUiState(isLoggedIn = false)
@@ -60,7 +60,7 @@ class LoginViewModel @Inject constructor(
                     tokenManager.clearAll()
                     _uiState.value = LoginUiState(
                         isLoading = false,
-                        error = "Login failed: ${e.message}"
+                        error = "登录失败：${e.message}"
                     )
                 }
             )
