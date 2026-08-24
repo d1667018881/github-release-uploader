@@ -19,12 +19,12 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,9 +91,12 @@ class UploadService : Service() {
             // 只取消上传 Job；收尾（通知、stopSelf、isUploading 复位）
             // 由协程内 catch(CancellationException) + finally(NonCancellable) 完成
             val job = uploadJob
-            if (job != null) {
+            if (job != null && !job.isCompleted) {
                 job.cancel()
             } else {
+                // 无进行中的上传（终态通知残留点击 / 新实例重启）：兜底清理并清掉残留通知
+                isUploading = false
+                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -125,7 +128,9 @@ class UploadService : Service() {
             try {
                 val contentResolver = applicationContext.contentResolver
                 for ((index, file) in files.withIndex()) {
-                    if (!isActive) break
+                    // 取消时抛 CancellationException（而非 break 静默退出），
+                    // 交给下方 catch(CancellationException) 走取消收尾，避免部分上传误报 "Upload complete!"
+                    ensureActive()
                     val uri = Uri.parse(file)
                     // SAF 文档 URI 的 lastPathSegment 不是真实文件名（如 primary:Download/app.apk），
                     // 必须通过 OpenableColumns.DISPLAY_NAME 查询
@@ -252,7 +257,12 @@ class UploadService : Service() {
             .setAutoCancel(!ongoing)
             .setProgress(total, current, total == 0)
             .setContentIntent(createPendingIntent())
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", createCancelPendingIntent())
+            .apply {
+                // 仅上传中的 ongoing 通知提供 Cancel 按钮；终态通知没有取消入口，语义更干净
+                if (ongoing) {
+                    addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", createCancelPendingIntent())
+                }
+            }
             .build()
 
     private fun createCancelPendingIntent(): PendingIntent {
