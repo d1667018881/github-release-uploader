@@ -425,6 +425,13 @@ implementation("group:artifact:version")
 - **R3-2b(P3)**：`createNotification` 仅 `ongoing=true`（上传中）时加 Cancel 按钮，终态通知无取消入口（语义更干净）。
 - **R3-3(附注)**：N5 威胁模型修正（设备重启后 pendingUris 与前台服务同归于尽，无旧 URI 上传场景；持久化授权占系统配额，超限 runCatching 优雅降级）——无需改代码，保留现状。
 
+### 应用文本中文化（2026-08-25 追加，commit e0f2700）
+
+- 全部 Screen 的 UI 文本（按钮/标题/提示/进度/错误）改为中文：登录页、仓库列表、仓库详情（含上传 Dialog）、代码浏览。
+- 通知文案（标题/开始/进行/完成/失败/取消）改为中文。
+- Repository/ViewModel 的错误消息改为中文前缀（"HTTP 请求失败（code）：..."、"文件过大…请在 GitHub 网页端查看" 等）；"API"/"Release"/"GitHub" 等专有名词与 GitHub 返回的 message 保留英文。
+- 品牌名 "GitHub Release Uploader"（strings.xml app_name）保留英文。
+
 ---
 
 ## 十、快速调试命令
