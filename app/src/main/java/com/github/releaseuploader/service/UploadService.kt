@@ -66,6 +66,11 @@ class UploadService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // 防重入：onStartCommand 可能被连续触发（用户重复发起上传），
+    // 已有上传进行中时直接忽略新请求，避免两个协程并发上传互相覆盖进度
+    @Volatile
+    private var isUploading = false
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -74,6 +79,7 @@ class UploadService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopForeground(STOP_FOREGROUND_REMOVE)
+            isUploading = false
             stopSelf()
             return START_NOT_STICKY
         }
@@ -85,6 +91,12 @@ class UploadService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+
+        if (isUploading) {
+            // 已在上传中，忽略新的上传请求
+            return START_NOT_STICKY
+        }
+        isUploading = true
 
         // 新上传开始前重置全局进度状态，避免 UI 残留上次上传结果
         resetState()
@@ -162,6 +174,7 @@ class UploadService : Service() {
             } finally {
                 // 让终态通知（非 ongoing，可清除）保留在通知栏，1.5s 后停止前台服务
                 delay(1500)
+                isUploading = false
                 stopForeground(STOP_FOREGROUND_DETACH)
                 stopSelf()
             }

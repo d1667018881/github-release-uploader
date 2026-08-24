@@ -22,12 +22,17 @@ class GitHubRepository @Inject constructor(
     // 轻量 LRU 内存缓存：降低重复请求、减少 API 配额消耗与限流风险。
     // 只缓存静态数据（目录/文件内容），登出时 clearCache() 清理。
     // 仓库列表是动态数据（星标/更新时间会变），不做缓存，避免脏数据。
+    // 线程安全：clearCache() 可能被 SessionManager 在 IO 线程调用，
+    // 而 getContents/getFileContent 可能在主线程写缓存，必须加锁。
+    private val cacheLock = Any()
     private val contentsCache = LinkedHashMap<String, List<ContentItem>>(32, 0.75f, true)
     private val fileCache = LinkedHashMap<String, ContentItem>(16, 0.75f, true)
 
     fun clearCache() {
-        contentsCache.clear()
-        fileCache.clear()
+        synchronized(cacheLock) {
+            contentsCache.clear()
+            fileCache.clear()
+        }
     }
 
     suspend fun getCurrentUser(): Result<User> = safeApiCall { api.getCurrentUser() }
@@ -38,29 +43,39 @@ class GitHubRepository @Inject constructor(
 
     suspend fun getContents(owner: String, repo: String, path: String): Result<List<ContentItem>> {
         val key = "$owner/$repo/$path"
-        contentsCache[key]?.let { return Result.success(it) }
+        synchronized(cacheLock) {
+            contentsCache[key]?.let { return Result.success(it) }
+        }
         return safeApiCall { api.getContents(owner, repo, path) }.onSuccess { contents ->
-            contentsCache[key] = contents
-            trimCache(contentsCache, Constants.MAX_CONTENTS_CACHE_SIZE)
+            synchronized(cacheLock) {
+                contentsCache[key] = contents
+                trimCache(contentsCache, Constants.MAX_CONTENTS_CACHE_SIZE)
+            }
         }
     }
 
     suspend fun getFileContent(owner: String, repo: String, path: String): Result<ContentItem> {
         val key = "$owner/$repo/$path"
-        fileCache[key]?.let { return Result.success(it) }
+        synchronized(cacheLock) {
+            fileCache[key]?.let { return Result.success(it) }
+        }
         val result = safeApiCall { api.getFileContent(owner, repo, path) }
         return result.fold(
             onSuccess = { item ->
                 if (item.size > Constants.MAX_FILE_SIZE_BYTES) {
                     Result.failure(IOException("File too large (${item.size} bytes). Please view on GitHub website."))
                 } else {
-                    fileCache[key] = item
-                    trimCache(fileCache, Constants.MAX_FILE_CACHE_SIZE)
+                    synchronized(cacheLock) {
+                        fileCache[key] = item
+                        trimCache(fileCache, Constants.MAX_FILE_CACHE_SIZE)
+                    }
                     Result.success(item)
                 }
             },
             onFailure = { e ->
-                fileCache[key]?.let { return@fold Result.success(it) }
+                synchronized(cacheLock) {
+                    fileCache[key]?.let { return@fold Result.success(it) }
+                }
                 Result.failure(e)
             }
         )

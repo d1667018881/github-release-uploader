@@ -13,12 +13,13 @@ sealed class Screen(val route: String) {
     data object Login : Screen("login")
     data object RepoList : Screen("repo_list")
     data object RepoDetail : Screen("repo_detail/{owner}/{repo}/{branch}") {
-        fun createRoute(owner: String, repo: String, branch: String) = "repo_detail/$owner/$repo/$branch"
+        // branch 可能含 "/"（如 release/v1.0），必须 Uri.encode，取参时自动解码
+        fun createRoute(owner: String, repo: String, branch: String) = "repo_detail/$owner/$repo/${Uri.encode(branch)}"
     }
     data object CodeBrowser : Screen("code_browser/{owner}/{repo}/{branch}/{path}") {
-        // path 含 "/"（子目录文件），必须 Uri.encode，Navigation 在编码后的 URI 上匹配，取参时自动解码
+        // path/branch 含 "/" 时必须 Uri.encode，Navigation 在编码后的 URI 上匹配，取参时自动解码
         fun createRoute(owner: String, repo: String, branch: String, path: String) =
-            "code_browser/$owner/$repo/$branch/${Uri.encode(path)}"
+            "code_browser/$owner/$repo/${Uri.encode(branch)}/${Uri.encode(path)}"
     }
 }
 
