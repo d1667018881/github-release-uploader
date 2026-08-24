@@ -37,19 +37,18 @@ class GitHubRepository @Inject constructor(
     }
 
     // GET 请求带重试（网络抖动时自动重试一次）；POST 不重试
-    suspend fun getCurrentUser(): Result<User> = safeApiCall({ api.getCurrentUser() }, retryable = true)
+    suspend fun getCurrentUser(): Result<User> = safeApiCall(retryable = true) { api.getCurrentUser() }
 
-    suspend fun getUserRepos(page: Int): Result<List<Repo>> = safeApiCall(
-        { api.getUserRepos(perPage = Constants.PER_PAGE, page = page) },
-        retryable = true
-    )
+    suspend fun getUserRepos(page: Int): Result<List<Repo>> = safeApiCall(retryable = true) {
+        api.getUserRepos(perPage = Constants.PER_PAGE, page = page)
+    }
 
     suspend fun getContents(owner: String, repo: String, path: String): Result<List<ContentItem>> {
         val key = "$owner/$repo/$path"
         synchronized(cacheLock) {
             contentsCache[key]?.let { return Result.success(it) }
         }
-        return safeApiCall({ api.getContents(owner, repo, path) }, retryable = true).onSuccess { contents ->
+        return safeApiCall(retryable = true) { api.getContents(owner, repo, path) }.onSuccess { contents ->
             synchronized(cacheLock) {
                 contentsCache[key] = contents
                 trimCache(contentsCache, Constants.MAX_CONTENTS_CACHE_SIZE)
@@ -62,7 +61,7 @@ class GitHubRepository @Inject constructor(
         synchronized(cacheLock) {
             fileCache[key]?.let { return Result.success(it) }
         }
-        val result = safeApiCall({ api.getFileContent(owner, repo, path) }, retryable = true)
+        val result = safeApiCall(retryable = true) { api.getFileContent(owner, repo, path) }
         return result.fold(
             onSuccess = { item ->
                 if (item.size > Constants.MAX_FILE_SIZE_BYTES) {
@@ -155,10 +154,11 @@ class GitHubRepository @Inject constructor(
     /**
      * 统一的 API 调用包装：取消透传 + 空 body 防护 + HTTP 错误带状态码。
      * retryable=true（GET）时对网络错误/5xx 自动重试一次。
+     * 注意：call 必须是最后一个参数，否则 trailing lambda 无法绑定（会绑到 retryable 导致类型错误）。
      */
     private suspend fun <T> safeApiCall(
-        call: suspend () -> Response<T>,
-        retryable: Boolean = false
+        retryable: Boolean = false,
+        call: suspend () -> Response<T>
     ): Result<T> {
         val maxAttempts = if (retryable) Constants.MAX_GET_RETRIES else 1
         var lastResult: Result<T>? = null
