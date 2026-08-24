@@ -47,19 +47,7 @@ fun RepoDetailScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            pendingUris = uris
-            viewModel.createRelease(owner, repo) { uploadUrl ->
-                if (uploadUrl.isNotBlank() && pendingUris.isNotEmpty()) {
-                    startUpload(uploadUrl, pendingUris)
-                }
-            }
-        }
-    }
-
+    // 注意：局部函数必须在使用它的 lambda 之前声明（Kotlin 词法作用域规则）
     fun startUpload(uploadUrl: String, uris: List<Uri>) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -71,6 +59,19 @@ fun RepoDetailScreen(
             putExtra(UploadService.EXTRA_UPLOAD_URL, uploadUrl)
         }
         ContextCompat.startForegroundService(context, intent)
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            pendingUris = uris
+            viewModel.createRelease(owner, repo) { uploadUrl ->
+                if (uploadUrl.isNotBlank() && pendingUris.isNotEmpty()) {
+                    startUpload(uploadUrl, pendingUris)
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
