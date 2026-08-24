@@ -343,6 +343,18 @@ implementation("group:artifact:version")
 - **进度节流**：阈值 ≥1% 增量或 ≥250ms 间隔；缓冲 64KB。不要改回 8KB 或每块刷新。
 - **导航编码**：`CodeBrowser` 的 path 参数必须 `Uri.encode()` 后拼接（Navigation 匹配后自动解码），否则子目录文件无法打开。
 
+### 后续自查修复（2026-08-24 追加，commit 6a654b4）
+
+- **Release 创建失败错误可见**：`RepoDetailUiState` 新增 `releaseError` 字段，`createRelease` 失败时在 Dialog 内显示错误（此前失败只写 `error`，被 Dialog 遮住看不到）。
+- **终态通知可清除**：`UploadService` 的完成/失败通知改为非 `ongoing`（`setAutoCancel(true)`），`stopForeground(STOP_FOREGROUND_DETACH)` 保留通知在通知栏、用户可手动清除（此前 `STOP_FOREGROUND_REMOVE` 会直接移除，用户看不到结果）。
+- **UploadState 顶层化**：`UploadState` 从 companion object 移至文件顶层 data class（companion 嵌套类类型引用在 K2 下解析不稳定，见 commit a5449c0）。
+
+### 已知可选优化（未改，接手时知悉）
+
+- `GitHubRepository` 缓存用 `LinkedHashMap`（非线程安全）：当前 `contentsCache` 仅在主线程、`fileCache` 仅在 IO 线程访问，无实际并发；若未来多线程调用需换 `ConcurrentHashMap` 或加锁。
+- `SessionManager` 持有常驻 `CoroutineScope(IO)` 永不 cancel（单例生命周期=进程，可接受）。
+- `UploadService.uploadProgress` 为 companion 全局 StateFlow，上传完成后 `isComplete` 会残留（重进页面可能看到旧「Upload complete!」），可在页面进入时按需 `resetState()`。
+
 ---
 
 ## 十、快速调试命令
