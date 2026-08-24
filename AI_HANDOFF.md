@@ -416,6 +416,15 @@ implementation("group:artifact:version")
 - **N5(P1)**：`RepoDetailScreen` 文件选择回调加 `takePersistableUriPermission`（`runCatching` 包裹，provider 不支持时降级一次性权限），URI 读权限跨设备重启有效。
 - **N6(信息)**：`data_extraction_rules.xml` 在 `allowBackup=false` 下不生效（死配置），保留作为未来开启备份的保险，不改。
 
+### 智谱 Round 3 复审处理（2026-08-25 追加，commit fc0f3f4）
+
+> 三次复审 3 条：R3-1/R3-2 已修，R3-3 附注无需改。Round 2 的 N1-N5 全部验证通过。
+
+- **R3-1(P2) 取消误报完成**：上传循环内 `if (!isActive) break` 改为 `ensureActive()`——取消落在文件边界非挂起间隙时，break 会静默落到 "Upload complete!" 分支（部分上传显示为完成）；改为抛 `CancellationException` 走取消收尾（与 N1 的 catch 协同）。
+- **R3-2a(P3)**：`ACTION_STOP` 的 else 分支（`uploadJob == null` 或已 completed）兜底清理：`isUploading=false` + `NotificationManager.cancel(NOTIFICATION_ID)` 清残留终态通知 + stopForeground/stopSelf（修"终态通知 Cancel 按钮点击无效"）。
+- **R3-2b(P3)**：`createNotification` 仅 `ongoing=true`（上传中）时加 Cancel 按钮，终态通知无取消入口（语义更干净）。
+- **R3-3(附注)**：N5 威胁模型修正（设备重启后 pendingUris 与前台服务同归于尽，无旧 URI 上传场景；持久化授权占系统配额，超限 runCatching 优雅降级）——无需改代码，保留现状。
+
 ---
 
 ## 十、快速调试命令
