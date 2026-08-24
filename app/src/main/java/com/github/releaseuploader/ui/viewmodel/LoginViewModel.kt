@@ -66,9 +66,4 @@ class LoginViewModel @Inject constructor(
             )
         }
     }
-
-    fun logout() {
-        sessionManager.logout()
-        _uiState.value = LoginUiState(isLoggedIn = false)
-    }
 }

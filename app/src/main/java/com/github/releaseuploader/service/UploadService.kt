@@ -16,13 +16,17 @@ import androidx.core.app.NotificationCompat
 import com.github.releaseuploader.data.repository.GitHubRepository
 import com.github.releaseuploader.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.IOException
@@ -73,6 +77,10 @@ class UploadService : Service() {
     @Volatile
     private var isUploading = false
 
+    // 当前上传协程的 Job 引用：取消时只 cancel Job，不 cancel scope（scope 可复用）。
+    // 若 cancel scope，取消后立即重传时 launch 在已取消 scope 上永不执行，上传静默卡死。
+    private var uploadJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -80,11 +88,15 @@ class UploadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            // 取消上传协程（通知栏 Cancel 按钮触发）
-            serviceScope.cancel()
-            isUploading = false
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            // 只取消上传 Job；收尾（通知、stopSelf、isUploading 复位）
+            // 由协程内 catch(CancellationException) + finally(NonCancellable) 完成
+            val job = uploadJob
+            if (job != null) {
+                job.cancel()
+            } else {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
             return START_NOT_STICKY
         }
 
@@ -109,7 +121,7 @@ class UploadService : Service() {
 
         _uploadProgress.value = UploadState(isUploading = true, totalFiles = files.size)
 
-        serviceScope.launch {
+        uploadJob = serviceScope.launch {
             try {
                 val contentResolver = applicationContext.contentResolver
                 for ((index, file) in files.withIndex()) {
@@ -169,6 +181,14 @@ class UploadService : Service() {
                     overallProgress = 100f
                 )
                 updateNotification(files.size, files.size, "Upload complete!", ongoing = false)
+            } catch (e: CancellationException) {
+                // 用户主动取消：正常收尾，不是失败；必须重新抛出保持结构化并发语义
+                _uploadProgress.value = _uploadProgress.value.copy(
+                    isUploading = false,
+                    error = null
+                )
+                updateNotification(0, files.size, "Upload cancelled", ongoing = false)
+                throw e
             } catch (e: Exception) {
                 _uploadProgress.value = _uploadProgress.value.copy(
                     isUploading = false,
@@ -176,11 +196,14 @@ class UploadService : Service() {
                 )
                 updateNotification(0, files.size, "Upload failed: ${e.message}", ongoing = false)
             } finally {
-                // 让终态通知（非 ongoing，可清除）保留在通知栏，1.5s 后停止前台服务
-                delay(1500)
-                isUploading = false
-                stopForeground(STOP_FOREGROUND_DETACH)
-                stopSelf()
+                // NonCancellable 保证协程被取消时清理逻辑仍执行（普通 finally 中的挂起点会被跳过）
+                withContext(NonCancellable) {
+                    // 让终态通知（非 ongoing，可清除）保留在通知栏，1.5s 后停止前台服务
+                    delay(1500)
+                    isUploading = false
+                    stopForeground(STOP_FOREGROUND_DETACH)
+                    stopSelf()
+                }
             }
         }
 

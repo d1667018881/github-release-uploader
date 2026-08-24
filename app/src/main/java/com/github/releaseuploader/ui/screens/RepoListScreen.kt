@@ -38,12 +38,11 @@ fun RepoListScreen(
     }
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo }
+        // 发射 Int（lastVisibleIndex）而非 LazyListLayoutInfo（无 equals，distinctUntilChanged 无效）
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .distinctUntilChanged()
-            .collect { layoutInfo ->
-                val totalItems = layoutInfo.totalItemsCount
-                val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                if (lastVisibleItem >= totalItems - 3 && !uiState.isLoadingMore && uiState.hasMore) {
+            .collect { lastVisibleIndex ->
+                if (lastVisibleIndex >= uiState.repos.size - 3 && !uiState.isLoadingMore && uiState.hasMore) {
                     viewModel.loadMore()
                 }
             }

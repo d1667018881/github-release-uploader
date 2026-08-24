@@ -69,6 +69,16 @@ fun RepoDetailScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
+            // 持久化 URI 读权限（跨设备重启仍有效）；部分 provider 不支持会抛 SecurityException，
+            // runCatching 降级为一次性权限（本次会话内仍可上传）
+            uris.forEach { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
             pendingUris = uris.map { it.toString() }
             viewModel.createRelease(owner, repo) { uploadUrl ->
                 if (uploadUrl.isNotBlank() && pendingUris.isNotEmpty()) {

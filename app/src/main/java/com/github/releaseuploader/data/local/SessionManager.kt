@@ -31,8 +31,9 @@ class SessionManager @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // 事件型（非状态型）：登出事件不重放，避免限流后新建页面一 collect 就误登出；
-    // 携带原因，区分限流登出（需提示）与手动登出（正常操作，不提示错误）
-    private val _loggedOut = MutableSharedFlow<LogoutReason>()
+    // 携带原因，区分限流登出（需提示）与手动登出（正常操作，不提示错误）。
+    // extraBufferCapacity=4：订阅者忙时 tryEmit 不会静默丢事件（默认 0 buffer 会丢）
+    private val _loggedOut = MutableSharedFlow<LogoutReason>(extraBufferCapacity = 4)
     val loggedOut: SharedFlow<LogoutReason> = _loggedOut.asSharedFlow()
 
     init {
