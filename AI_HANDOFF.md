@@ -405,6 +405,17 @@ implementation("group:artifact:version")
 - #29 缺 dataExtractionRules → 新增 `res/xml/data_extraction_rules.xml` 排除加密 Token 文件
 - #30 snapshotFlow 缺 distinctUntilChanged → 已加
 
+### 智谱 Round 2 复审处理（2026-08-24 追加，commit d4383a8）
+
+> 二次复审 6 条：N1-N5 已修，N6 信息性无需改。
+
+- **N1(P0) 上传取消竞态链**：`UploadService` 改 Job 引用方案——`ACTION_STOP` 只 `uploadJob?.cancel()` 不 `serviceScope.cancel()`（scope 取消后无法再 launch，取消后立即重传会静默卡死）；`catch (CancellationException)` 视作正常取消（显示 "Upload cancelled" 并 `throw e` 保持结构化并发，不再误报失败）；`finally` 包 `withContext(NonCancellable)` 保证取消后清理（delay/stopForeground/stopSelf/isUploading 复位）仍执行；取消不再残留失败通知。
+- **N2(P1)**：`SessionManager._loggedOut` 加 `extraBufferCapacity = 4`，订阅者忙时 tryEmit 不丢事件。
+- **N3(P2)**：删除 `LoginViewModel.logout()` 死代码（无调用方，实际登出走 RepoListViewModel）。
+- **N4(P2)**：`RepoListScreen` 的 snapshotFlow 改发射 `lastVisibleIndex`（Int）——`LazyListLayoutInfo` 无 `equals()`，原 `distinctUntilChanged` 对对象无效。
+- **N5(P1)**：`RepoDetailScreen` 文件选择回调加 `takePersistableUriPermission`（`runCatching` 包裹，provider 不支持时降级一次性权限），URI 读权限跨设备重启有效。
+- **N6(信息)**：`data_extraction_rules.xml` 在 `allowBackup=false` 下不生效（死配置），保留作为未来开启备份的保险，不改。
+
 ---
 
 ## 十、快速调试命令
