@@ -359,7 +359,51 @@ implementation("group:artifact:version")
 
 - `GitHubRepository` 缓存用 `LinkedHashMap`（非线程安全）：当前 `contentsCache` 仅在主线程、`fileCache` 仅在 IO 线程访问，无实际并发；若未来多线程调用需换 `ConcurrentHashMap` 或加锁。
 - `SessionManager` 持有常驻 `CoroutineScope(IO)` 永不 cancel（单例生命周期=进程，可接受）。
-- `UploadService.uploadProgress` 为 companion 全局 StateFlow，上传完成后 `isComplete` 会残留（重进页面可能看到旧「Upload complete!」），可在页面进入时按需 `resetState()`。
+- `UploadService.uploadProgress` 为 companion 全局 StateFlow，上传完成后 `isComplete` 会残留（重进页面可能看到旧「Upload complete!」），已在 `RepoDetailScreen` 进入页面时非上传中 `resetState()`（commit c37b02）。
+
+### 智谱审查处理（2026-08-24 追加，commit c37b02 + 6ae176）
+
+> 智谱审查共 30 条告警：**21 条已修复，7 条评估不修改，2 条此前已修**（#1 branch 编码、#2 缓存锁）。
+
+**P0（6 条，全修）**
+- #1 branch 含 `/` 路由崩溃 → 已修（commit 36278bf，`Uri.encode(branch)`，与智谱推荐的 query 参数方案等效）
+- #2 缓存线程安全竞态 → 已修（commit 36278bf，`synchronized(cacheLock)`）
+- #3 `openInputStream` 为 null 静默发空 body → 改抛 `IOException`
+- #4 `contentLength()` 多次开 fd → `by lazy` 缓存长度
+- #5 `ACTION_STOP` 不取消协程、无 UI 入口 → `serviceScope.cancel()` + 通知栏 Cancel action
+- #6 RepoDetail/CodeBrowser 不响应限流登出 → 两个 ViewModel 订阅 `SessionManager.loggedOut`，Screen `LaunchedEffect` 触发，NavGraph `popUpTo(0)` 清栈回登录页
+
+**P1（5 条，全修）**
+- #7 createRelease/uploadAsset 未复用 safeApiCall → 已复用（⚠️ 注意：safeApiCall 签名 `(retryable, call)`，call 必须是最后一个参数，否则 trailing lambda 绑定错误，见 commit 6ae176）
+- #8 GET 无重试 → `safeApiCall(retryable = true)`，网络错误/5xx 自动重试一次
+- #9 contentLength -1 无进度 → 评估不修：-1 仅 statSize 失败时出现（极罕见），indeterminate 需全链路特判收益极低
+- #10 Open in browser URL 未编码 → path/branch 每段 `Uri.encode()`
+- #11 缓存回退无提示 → 加 `Log.w`
+
+**P2（6 条，修 4 不修 2）**
+- #12 零测试覆盖 → 不修：CI 无 test 任务，补了没人跑；建议作为独立工作项
+- #13 依赖无 Version Catalog → 不修：单模块小项目，收益低迁移有风险
+- #14 UI 字符串硬编码 → 不修：个人项目无 i18n 需求
+- #15 reset 只在登录成功调 → `forceLogout()` 内补 `rateLimitInterceptor.reset()`
+- #16 RepoItem/ContentItemRow public → 改 `private`
+- #17 uploadProgress 重进残留 → `RepoDetailScreen` 进入时非上传中 `resetState()`
+
+**P3（4 条，全不修）**
+- #18 R8 开启 → 需 keep 规则+回归测试，收益低风险高
+- #19 configuration-cache → AGP/KSP 兼容性未验证；`kotlin.incremental` 默认已开启
+- #20 icons-extended → 用到的图标多不在 core，删了会编译失败
+- #21 --no-daemon → CI 每次全新 runner 无 daemon 收益
+
+**P4（9 条，修 8 不修 1）**
+- #22 未用颜色 → 删 Purple80/PurpleGrey80/Pink80
+- #23 浅色主题模板色 → 换 GitHub 浅色配色（#0969DA/#1A7F37/#CF222E）
+- #24 perPage 硬编码 30 → 改 `Constants.PER_PAGE`
+- #25 logout 竞态 → `SessionManager.loggedOut` 改 `SharedFlow<LogoutReason>`（RATE_LIMIT/MANUAL），手动登出不显示限流错误
+- #26 tagInput → `rememberSaveable`
+- #27 pendingUris → `rememberSaveable`（存 `List<String>`，旋转不丢文件）
+- #28 queryDisplayName 吞异常 → 加 `Log.w`
+- #29 缺 dataExtractionRules → 新增 `res/xml/data_extraction_rules.xml` 排除加密 Token 文件
+- #30 snapshotFlow 缺 distinctUntilChanged → 已加
 
 ---
 
