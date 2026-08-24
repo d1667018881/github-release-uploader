@@ -152,17 +152,17 @@ class UploadService : Service() {
                     isUploading = false,
                     overallProgress = 100f
                 )
-                updateNotification(files.size, files.size, "Upload complete!")
+                updateNotification(files.size, files.size, "Upload complete!", ongoing = false)
             } catch (e: Exception) {
                 _uploadProgress.value = _uploadProgress.value.copy(
                     isUploading = false,
                     error = e.message
                 )
-                updateNotification(0, files.size, "Upload failed: ${e.message}")
+                updateNotification(0, files.size, "Upload failed: ${e.message}", ongoing = false)
             } finally {
-                // 终态通知展示 1.5s 后停止前台服务，避免服务常驻空转耗电
+                // 让终态通知（非 ongoing，可清除）保留在通知栏，1.5s 后停止前台服务
                 delay(1500)
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopForeground(STOP_FOREGROUND_DETACH)
                 stopSelf()
             }
         }
@@ -202,18 +202,19 @@ class UploadService : Service() {
         }
     }
 
-    private fun createNotification(current: Int, total: Int, message: String) =
+    private fun createNotification(current: Int, total: Int, message: String, ongoing: Boolean = true) =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Uploading Release Assets")
             .setContentText(message)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setOngoing(true)
+            .setOngoing(ongoing)
+            .setAutoCancel(!ongoing)
             .setProgress(total, current, total == 0)
             .setContentIntent(createPendingIntent())
             .build()
 
-    private fun updateNotification(current: Int, total: Int, message: String) {
-        val notification = createNotification(current, total, message)
+    private fun updateNotification(current: Int, total: Int, message: String, ongoing: Boolean = true) {
+        val notification = createNotification(current, total, message, ongoing)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, notification)
     }

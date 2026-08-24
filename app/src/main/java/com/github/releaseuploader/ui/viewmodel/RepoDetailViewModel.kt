@@ -17,7 +17,8 @@ data class RepoDetailUiState(
     val releaseTag: String = "",
     val showReleaseDialog: Boolean = false,
     val isCreatingRelease: Boolean = false,
-    val uploadUrl: String = ""
+    val uploadUrl: String = "",
+    val releaseError: String? = null
 )
 
 @HiltViewModel
@@ -71,14 +72,15 @@ class RepoDetailViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isCreatingRelease = false,
                         showReleaseDialog = false,
-                        uploadUrl = release.uploadUrl
+                        uploadUrl = release.uploadUrl,
+                        releaseError = null
                     )
                     onSuccess(release.uploadUrl)
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(
                         isCreatingRelease = false,
-                        error = "Failed to create release: ${e.message}"
+                        releaseError = "Failed to create release: ${e.message}"
                     )
                 }
             )
