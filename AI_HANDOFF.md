@@ -349,6 +349,12 @@ implementation("group:artifact:version")
 - **终态通知可清除**：`UploadService` 的完成/失败通知改为非 `ongoing`（`setAutoCancel(true)`），`stopForeground(STOP_FOREGROUND_DETACH)` 保留通知在通知栏、用户可手动清除（此前 `STOP_FOREGROUND_REMOVE` 会直接移除，用户看不到结果）。
 - **UploadState 顶层化**：`UploadState` 从 companion object 移至文件顶层 data class（companion 嵌套类类型引用在 K2 下解析不稳定，见 commit a5449c0）。
 
+### 第二轮自查修复（2026-08-24 追加，commit 36278bf）
+
+- **缓存并发锁**：`GitHubRepository` 缓存读写统一加 `synchronized(cacheLock)`。原因：`SessionManager` 登出时在 IO 线程调 `clearCache()`，而 `getContents`/`getFileContent` 可能在主线程写缓存，`LinkedHashMap` 非线程安全会 ConcurrentModificationException。
+- **上传防重入**：`UploadService` 新增 `@Volatile isUploading`，重复触发上传时忽略新请求（此前连续触发会启动两个并发协程互相覆盖进度）；`ACTION_STOP` 分支也复位标志。
+- **branch 路由编码**：`NavGraph` 的 `branch` 参数 `Uri.encode()`（GitHub 分支名可含 `/` 如 `release/v1.0`，不编码会路由段数不匹配）。
+
 ### 已知可选优化（未改，接手时知悉）
 
 - `GitHubRepository` 缓存用 `LinkedHashMap`（非线程安全）：当前 `contentsCache` 仅在主线程、`fileCache` 仅在 IO 线程访问，无实际并发；若未来多线程调用需换 `ConcurrentHashMap` 或加锁。
