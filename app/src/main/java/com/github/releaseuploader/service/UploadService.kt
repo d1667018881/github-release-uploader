@@ -27,6 +27,21 @@ import kotlinx.coroutines.flow.StateFlow
 import java.io.IOException
 import javax.inject.Inject
 
+/**
+ * 上传进度状态。定义为文件顶层 data class（而非 companion 嵌套类），
+ * 供 UI 层（RepoDetailScreen）直接引用。
+ */
+data class UploadState(
+    val isUploading: Boolean = false,
+    val currentFile: String = "",
+    val fileIndex: Int = 0,
+    val totalFiles: Int = 0,
+    val fileProgress: Float = 0f,
+    val overallProgress: Float = 0f,
+    val isComplete: Boolean = false,
+    val error: String? = null
+)
+
 @AndroidEntryPoint
 class UploadService : Service() {
 
@@ -47,17 +62,6 @@ class UploadService : Service() {
         fun resetState() {
             _uploadProgress.value = UploadState()
         }
-
-        data class UploadState(
-            val isUploading: Boolean = false,
-            val currentFile: String = "",
-            val fileIndex: Int = 0,
-            val totalFiles: Int = 0,
-            val fileProgress: Float = 0f,
-            val overallProgress: Float = 0f,
-            val isComplete: Boolean = false,
-            val error: String? = null
-        )
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())

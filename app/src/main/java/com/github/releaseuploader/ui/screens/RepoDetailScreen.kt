@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.releaseuploader.data.model.ContentItem
 import com.github.releaseuploader.service.UploadService
+import com.github.releaseuploader.service.UploadState
 import com.github.releaseuploader.ui.viewmodel.RepoDetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -195,7 +196,7 @@ fun RepoDetailScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UploadProgressBanner(state: UploadService.UploadState) {
+private fun UploadProgressBanner(state: UploadState) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
