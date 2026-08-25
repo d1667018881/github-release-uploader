@@ -145,6 +145,18 @@ class GitHubRepository @Inject constructor(
     suspend fun getContributors(owner: String, repo: String): Result<List<Contributor>> =
         safeApiCall(retryable = true) { api.getContributors(owner, repo) }
 
+    suspend fun getSubscribers(owner: String, repo: String): Result<List<User>> =
+        safeApiCall(retryable = true) { api.getSubscribers(owner, repo) }
+
+    suspend fun getIssues(owner: String, repo: String): Result<List<Issue>> =
+        safeApiCall(retryable = true) { api.getIssues(owner, repo) }
+
+    suspend fun getPulls(owner: String, repo: String): Result<List<PullRequest>> =
+        safeApiCall(retryable = true) { api.getPulls(owner, repo) }
+
+    suspend fun getWorkflows(owner: String, repo: String): Result<List<Workflow>> =
+        safeApiCall(retryable = true) { api.getWorkflows(owner, repo) }.map { it.workflows }
+
     /** 获取 README 并直接返回解码后的 Markdown 文本 */
     suspend fun getReadme(owner: String, repo: String): Result<String> {
         val result = safeApiCall(retryable = true) { api.getReadme(owner, repo) }

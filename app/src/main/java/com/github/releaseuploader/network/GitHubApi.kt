@@ -69,6 +69,35 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 10
     ): Response<List<Contributor>>
 
+    @GET("repos/{owner}/{repo}/subscribers")
+    suspend fun getSubscribers(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 30
+    ): Response<List<User>>
+
+    @GET("repos/{owner}/{repo}/issues")
+    suspend fun getIssues(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 30
+    ): Response<List<Issue>>
+
+    @GET("repos/{owner}/{repo}/pulls")
+    suspend fun getPulls(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 30
+    ): Response<List<PullRequest>>
+
+    @GET("repos/{owner}/{repo}/actions/workflows")
+    suspend fun getWorkflows(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Response<WorkflowResponse>
+
     @GET("repos/{owner}/{repo}/readme")
     suspend fun getReadme(
         @Path("owner") owner: String,

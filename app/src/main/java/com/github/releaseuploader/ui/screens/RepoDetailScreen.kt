@@ -1,7 +1,5 @@
 package com.github.releaseuploader.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,11 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.widget.TextView
@@ -37,12 +35,17 @@ fun RepoDetailScreen(
     repo: String,
     branch: String,
     onCodeClick: () -> Unit,
+    onIssuesClick: () -> Unit,
+    onPullsClick: () -> Unit,
+    onActionsClick: () -> Unit,
+    onReleasesClick: () -> Unit,
+    onContributorsClick: () -> Unit,
+    onWatchersClick: () -> Unit,
     onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: RepoDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
 
     LaunchedEffect(uiState.isLoggedOut) {
         if (uiState.isLoggedOut) {
@@ -52,12 +55,6 @@ fun RepoDetailScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadDetail(owner, repo)
-    }
-
-    fun openUrl(url: String) {
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }
     }
 
     Scaffold(
@@ -111,10 +108,10 @@ fun RepoDetailScreen(
                                 }
                             }
                         }
-                        // 功能入口
-                        item { EntryItem(Icons.Default.Circle, Color(0xFF1F883D), "议题", "${repoData.openIssuesCount} 个未解决", onClick = { openUrl("${repoData.htmlUrl}/issues") }) }
-                        item { EntryItem(Icons.Default.CallMerge, Color(0xFF0969DA), "拉取请求", onClick = { openUrl("${repoData.htmlUrl}/pulls") }) }
-                        item { EntryItem(Icons.Default.PlayArrow, Color(0xFFBF8700), "操作", onClick = { openUrl("${repoData.htmlUrl}/actions") }) }
+                        // 功能入口（App 内页面导航，不跳浏览器）
+                        item { EntryItem(Icons.Default.Circle, Color(0xFF1F883D), "议题", "${repoData.openIssuesCount} 个未解决", onClick = onIssuesClick) }
+                        item { EntryItem(Icons.Default.CallMerge, Color(0xFF0969DA), "拉取请求", onClick = onPullsClick) }
+                        item { EntryItem(Icons.Default.PlayArrow, Color(0xFFBF8700), "操作", onClick = onActionsClick) }
                         item {
                             val latest = uiState.releases.firstOrNull()
                             EntryItem(
@@ -123,7 +120,7 @@ fun RepoDetailScreen(
                                 "发行版",
                                 subtitle = if (uiState.releases.isEmpty()) null
                                     else "${latest?.tagName} · 共 ${uiState.releases.size} 个",
-                                onClick = { openUrl("${repoData.htmlUrl}/releases") }
+                                onClick = onReleasesClick
                             )
                         }
                         item {
@@ -132,10 +129,10 @@ fun RepoDetailScreen(
                                 Color(0xFFBF3981),
                                 "贡献者",
                                 subtitle = if (uiState.contributors.isEmpty()) null else "${uiState.contributors.size} 人",
-                                onClick = { openUrl("${repoData.htmlUrl}/graphs/contributors") }
+                                onClick = onContributorsClick
                             )
                         }
-                        item { EntryItem(Icons.Default.Visibility, Color(0xFFBF8700), "关注者", "${repoData.watchersCount} 人", onClick = { openUrl("${repoData.htmlUrl}/watchers") }) }
+                        item { EntryItem(Icons.Default.Visibility, Color(0xFFBF8700), "关注者", "${repoData.watchersCount} 人", onClick = onWatchersClick) }
                         item { EntryItem(Icons.Default.Folder, Color(0xFF57606A), "代码", "浏览仓库文件", onClick = onCodeClick) }
                         // README
                         if (uiState.readme.isNotBlank()) {
@@ -218,21 +215,37 @@ private fun EntryItem(
 private fun ReadmeSection(markdown: String) {
     val context = LocalContext.current
     val markwon = remember { Markwon.builder(context).build() }
+    // 适配深浅色主题
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val surfaceColor = MaterialTheme.colorScheme.surface
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text(
-            text = "README.md",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        ) {
+            Icon(
+                Icons.Default.Description,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "README.md",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         AndroidView(
             factory = { ctx ->
                 TextView(ctx).apply {
-                    // TextView.textSize 单位是 px，需乘 scaledDensity 得到等效 14sp
-                    textSize = 14f * ctx.resources.displayMetrics.scaledDensity
-                    setTextColor(android.graphics.Color.parseColor("#1F2328"))
-                    setPadding(16, 0, 16, 16)
+                    // 13sp 适中字号，1.3 倍行距提升可读性
+                    textSize = 13f * ctx.resources.displayMetrics.scaledDensity
+                    setTextColor(textColor.toArgb())
+                    setBackgroundColor(surfaceColor.toArgb())
+                    setLineSpacing(0f, 1.3f)
+                    setPadding(16, 0, 16, 24)
                 }
             },
             update = { tv ->

@@ -24,11 +24,53 @@ sealed class Screen(val route: String) {
         fun createRoute(owner: String, repo: String, branch: String, path: String) =
             "code_browser/$owner/$repo/${Uri.encode(branch)}/${Uri.encode(path)}"
     }
+    // 仓库功能列表页
+    data object Releases : Screen("repo_releases/{owner}/{repo}") {
+        fun createRoute(owner: String, repo: String) = "repo_releases/$owner/$repo"
+    }
+    data object Contributors : Screen("repo_contributors/{owner}/{repo}") {
+        fun createRoute(owner: String, repo: String) = "repo_contributors/$owner/$repo"
+    }
+    data object Watchers : Screen("repo_watchers/{owner}/{repo}") {
+        fun createRoute(owner: String, repo: String) = "repo_watchers/$owner/$repo"
+    }
+    data object Issues : Screen("repo_issues/{owner}/{repo}") {
+        fun createRoute(owner: String, repo: String) = "repo_issues/$owner/$repo"
+    }
+    data object Pulls : Screen("repo_pulls/{owner}/{repo}") {
+        fun createRoute(owner: String, repo: String) = "repo_pulls/$owner/$repo"
+    }
+    data object Actions : Screen("repo_actions/{owner}/{repo}") {
+        fun createRoute(owner: String, repo: String) = "repo_actions/$owner/$repo"
+    }
 }
 
 private fun NavHostController.navigateToLogin() {
     navigate(Screen.Login.route) {
         popUpTo(0) { inclusive = true }
+    }
+}
+
+/** 仓库功能列表页的统一 composable 注册 */
+private fun androidx.navigation.NavGraphBuilder.repoListScreen(
+    route: String,
+    content: @Composable (String, String, () -> Unit, () -> Unit) -> Unit
+) {
+    composable(
+        route = route,
+        arguments = listOf(
+            navArgument("owner") { type = NavType.StringType },
+            navArgument("repo") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val owner = backStackEntry.arguments?.getString("owner") ?: ""
+        val repo = backStackEntry.arguments?.getString("repo") ?: ""
+        content(
+            owner,
+            repo,
+            { navigateToLogin() },
+            { popBackStack() }
+        )
     }
 }
 
@@ -74,6 +116,24 @@ fun NavGraph(navController: NavHostController) {
                 branch = branch,
                 onCodeClick = {
                     navController.navigate(Screen.RepoFiles.createRoute(owner, repo, branch))
+                },
+                onIssuesClick = {
+                    navController.navigate(Screen.Issues.createRoute(owner, repo))
+                },
+                onPullsClick = {
+                    navController.navigate(Screen.Pulls.createRoute(owner, repo))
+                },
+                onActionsClick = {
+                    navController.navigate(Screen.Actions.createRoute(owner, repo))
+                },
+                onReleasesClick = {
+                    navController.navigate(Screen.Releases.createRoute(owner, repo))
+                },
+                onContributorsClick = {
+                    navController.navigate(Screen.Contributors.createRoute(owner, repo))
+                },
+                onWatchersClick = {
+                    navController.navigate(Screen.Watchers.createRoute(owner, repo))
                 },
                 onLoggedOut = {
                     navController.navigateToLogin()
@@ -132,6 +192,26 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onBack = { navController.popBackStack() }
             )
+        }
+
+        // 仓库功能列表页
+        repoListScreen(Screen.Releases.route) { o, r, onLogout, onBack ->
+            ReleasesScreen(o, r, onLogout, onBack)
+        }
+        repoListScreen(Screen.Contributors.route) { o, r, onLogout, onBack ->
+            ContributorsScreen(o, r, onLogout, onBack)
+        }
+        repoListScreen(Screen.Watchers.route) { o, r, onLogout, onBack ->
+            WatchersScreen(o, r, onLogout, onBack)
+        }
+        repoListScreen(Screen.Issues.route) { o, r, onLogout, onBack ->
+            IssuesScreen(o, r, onLogout, onBack)
+        }
+        repoListScreen(Screen.Pulls.route) { o, r, onLogout, onBack ->
+            PullsScreen(o, r, onLogout, onBack)
+        }
+        repoListScreen(Screen.Actions.route) { o, r, onLogout, onBack ->
+            ActionsScreen(o, r, onLogout, onBack)
         }
     }
 }
