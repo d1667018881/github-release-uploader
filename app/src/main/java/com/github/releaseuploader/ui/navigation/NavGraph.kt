@@ -53,6 +53,7 @@ private fun NavHostController.navigateToLogin() {
 
 /** 仓库功能列表页的统一 composable 注册 */
 private fun androidx.navigation.NavGraphBuilder.repoListScreen(
+    navController: NavHostController,
     route: String,
     content: @Composable (String, String, () -> Unit, () -> Unit) -> Unit
 ) {
@@ -68,8 +69,8 @@ private fun androidx.navigation.NavGraphBuilder.repoListScreen(
         content(
             owner,
             repo,
-            { navigateToLogin() },
-            { popBackStack() }
+            { navController.navigateToLogin() },
+            { navController.popBackStack() }
         )
     }
 }
@@ -195,22 +196,22 @@ fun NavGraph(navController: NavHostController) {
         }
 
         // 仓库功能列表页
-        repoListScreen(Screen.Releases.route) { o, r, onLogout, onBack ->
+        repoListScreen(navController, Screen.Releases.route) { o, r, onLogout, onBack ->
             ReleasesScreen(o, r, onLogout, onBack)
         }
-        repoListScreen(Screen.Contributors.route) { o, r, onLogout, onBack ->
+        repoListScreen(navController, Screen.Contributors.route) { o, r, onLogout, onBack ->
             ContributorsScreen(o, r, onLogout, onBack)
         }
-        repoListScreen(Screen.Watchers.route) { o, r, onLogout, onBack ->
+        repoListScreen(navController, Screen.Watchers.route) { o, r, onLogout, onBack ->
             WatchersScreen(o, r, onLogout, onBack)
         }
-        repoListScreen(Screen.Issues.route) { o, r, onLogout, onBack ->
+        repoListScreen(navController, Screen.Issues.route) { o, r, onLogout, onBack ->
             IssuesScreen(o, r, onLogout, onBack)
         }
-        repoListScreen(Screen.Pulls.route) { o, r, onLogout, onBack ->
+        repoListScreen(navController, Screen.Pulls.route) { o, r, onLogout, onBack ->
             PullsScreen(o, r, onLogout, onBack)
         }
-        repoListScreen(Screen.Actions.route) { o, r, onLogout, onBack ->
+        repoListScreen(navController, Screen.Actions.route) { o, r, onLogout, onBack ->
             ActionsScreen(o, r, onLogout, onBack)
         }
     }
