@@ -432,6 +432,17 @@ implementation("group:artifact:version")
 - Repository/ViewModel 的错误消息改为中文前缀（"HTTP 请求失败（code）：..."、"文件过大…请在 GitHub 网页端查看" 等）；"API"/"Release"/"GitHub" 等专有名词与 GitHub 返回的 message 保留英文。
 - 品牌名 "GitHub Release Uploader"（strings.xml app_name）保留英文。
 
+### 仓库概览页（2026-08-25 新增功能，commit b2b7f55 + 5536e03）
+
+> 架构调整：`RepoDetail` 从"文件列表页"改为 **GitHub 官方 App 风格仓库概览页**，文件浏览拆为独立页面。
+
+- **RepoDetailScreen（概览页）**：仓库信息头部（全名/描述/私人标签/星标/复刻）+ 标星按钮（PUT/DELETE `/user/starred`）+ 功能入口列表（议题/拉取请求/操作/发行版(最新 tag)/贡献者/关注者/代码）+ **README.md 直接渲染**（Markwon 重新引入，AndroidView + TextView）。
+  - 入口点击打开浏览器对应页面（issues/pulls/actions/releases/contributors/watchers）；"代码"入口进文件浏览页。
+  - 数据并行加载（`async`）：`getRepoDetail`/`getReleases`/`getContributors`/`getReadme`/`isStarred`。
+- **RepoFilesScreen（文件浏览页，新增路由 `repo_files/{owner}/{repo}/{branch}`）**：原 RepoDetail 的目录导航 + Release 上传逻辑整体迁移至此（RepoFilesViewModel）。
+- **API/模型扩展**：Repo 补充 `open_issues_count`/`watchers_count`/`owner` 等字段；新增 Contributor 模型、`getRepoDetail`/`getReleases`/`getContributors`/`getReadme`/`checkStarred`/`star`/`unstar` 接口。
+- **注意**：`retrofit2.Response.code` 是 Java 方法必须 `code()` 带括号（曾致编译失败）；标星接口返回 204 无 body，用独立的 `safeApiCallVoid` 包装（`safeApiCall` 会把 204+空 body 误判失败）。
+
 ---
 
 ## 十、快速调试命令
