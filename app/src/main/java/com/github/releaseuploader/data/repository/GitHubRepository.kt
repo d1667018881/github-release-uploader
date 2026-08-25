@@ -161,7 +161,8 @@ class GitHubRepository @Inject constructor(
     /** 是否已标星：204=已标星，404=未标星，其余网络错误按未标星处理 */
     suspend fun isStarred(owner: String, repo: String): Boolean {
         return try {
-            api.checkStarred(owner, repo).code == 204
+            // retrofit2.Response.code 是 Java 方法，必须带括号调用
+            api.checkStarred(owner, repo).code() == 204
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
