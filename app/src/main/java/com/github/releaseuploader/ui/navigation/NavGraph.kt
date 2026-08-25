@@ -16,10 +16,19 @@ sealed class Screen(val route: String) {
         // branch 可能含 "/"（如 release/v1.0），必须 Uri.encode，取参时自动解码
         fun createRoute(owner: String, repo: String, branch: String) = "repo_detail/$owner/$repo/${Uri.encode(branch)}"
     }
+    data object RepoFiles : Screen("repo_files/{owner}/{repo}/{branch}") {
+        fun createRoute(owner: String, repo: String, branch: String) = "repo_files/$owner/$repo/${Uri.encode(branch)}"
+    }
     data object CodeBrowser : Screen("code_browser/{owner}/{repo}/{branch}/{path}") {
         // path/branch 含 "/" 时必须 Uri.encode，Navigation 在编码后的 URI 上匹配，取参时自动解码
         fun createRoute(owner: String, repo: String, branch: String, path: String) =
             "code_browser/$owner/$repo/${Uri.encode(branch)}/${Uri.encode(path)}"
+    }
+}
+
+private fun NavHostController.navigateToLogin() {
+    navigate(Screen.Login.route) {
+        popUpTo(0) { inclusive = true }
     }
 }
 
@@ -42,13 +51,12 @@ fun NavGraph(navController: NavHostController) {
                     navController.navigate(Screen.RepoDetail.createRoute(owner, repo, branch))
                 },
                 onLoggedOut = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(Screen.RepoList.route) { inclusive = true }
-                    }
+                    navController.navigateToLogin()
                 }
             )
         }
 
+        // 仓库概览页（官方 App 风格：功能入口 + README）
         composable(
             route = Screen.RepoDetail.route,
             arguments = listOf(
@@ -64,18 +72,43 @@ fun NavGraph(navController: NavHostController) {
                 owner = owner,
                 repo = repo,
                 branch = branch,
-                onFileClick = { path ->
-                    navController.navigate(Screen.CodeBrowser.createRoute(owner, repo, branch, path))
+                onCodeClick = {
+                    navController.navigate(Screen.RepoFiles.createRoute(owner, repo, branch))
                 },
                 onLoggedOut = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
-                    }
+                    navController.navigateToLogin()
                 },
                 onBack = { navController.popBackStack() }
             )
         }
 
+        // 仓库文件浏览页（目录导航 + 上传）
+        composable(
+            route = Screen.RepoFiles.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("branch") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val branch = backStackEntry.arguments?.getString("branch") ?: "main"
+            RepoFilesScreen(
+                owner = owner,
+                repo = repo,
+                branch = branch,
+                onFileClick = { path ->
+                    navController.navigate(Screen.CodeBrowser.createRoute(owner, repo, branch, path))
+                },
+                onLoggedOut = {
+                    navController.navigateToLogin()
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 代码查看页
         composable(
             route = Screen.CodeBrowser.route,
             arguments = listOf(
@@ -95,9 +128,7 @@ fun NavGraph(navController: NavHostController) {
                 branch = branch,
                 path = path,
                 onLoggedOut = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
-                    }
+                    navController.navigateToLogin()
                 },
                 onBack = { navController.popBackStack() }
             )

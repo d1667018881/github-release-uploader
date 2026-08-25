@@ -13,5 +13,16 @@ data class Repo(
     @SerializedName("forks_count") val forksCount: Int,
     @SerializedName("language") val language: String?,
     @SerializedName("updated_at") val updatedAt: String,
-    @SerializedName("default_branch") val defaultBranch: String
+    @SerializedName("default_branch") val defaultBranch: String,
+    // 概览页补充字段（/repos/{owner}/{repo} 返回）
+    @SerializedName("open_issues_count") val openIssuesCount: Int = 0,
+    @SerializedName("watchers_count") val watchersCount: Int = 0,
+    @SerializedName("subscribers_count") val subscribersCount: Int = 0,
+    @SerializedName("has_issues") val hasIssues: Boolean = true,
+    val owner: RepoOwner? = null
+)
+
+data class RepoOwner(
+    val login: String,
+    @SerializedName("avatar_url") val avatarUrl: String?
 )

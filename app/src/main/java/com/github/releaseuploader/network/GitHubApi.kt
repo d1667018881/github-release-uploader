@@ -47,4 +47,50 @@ interface GitHubApi {
         @Url uploadUrl: String,
         @Body file: RequestBody
     ): Response<ResponseBody>
+
+    // ---- 仓库概览页 ----
+    @GET("repos/{owner}/{repo}")
+    suspend fun getRepoDetail(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Response<Repo>
+
+    @GET("repos/{owner}/{repo}/releases")
+    suspend fun getReleases(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 5
+    ): Response<List<Release>>
+
+    @GET("repos/{owner}/{repo}/contributors")
+    suspend fun getContributors(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 10
+    ): Response<List<Contributor>>
+
+    @GET("repos/{owner}/{repo}/readme")
+    suspend fun getReadme(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Response<ContentItem>
+
+    // 标星（204 无 body；check 时 204=已标星，404=未标星）
+    @GET("user/starred/{owner}/{repo}")
+    suspend fun checkStarred(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Response<ResponseBody>
+
+    @PUT("user/starred/{owner}/{repo}")
+    suspend fun starRepo(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Response<ResponseBody>
+
+    @DELETE("user/starred/{owner}/{repo}")
+    suspend fun unstarRepo(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): Response<ResponseBody>
 }

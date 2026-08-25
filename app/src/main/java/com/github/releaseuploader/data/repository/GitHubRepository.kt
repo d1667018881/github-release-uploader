@@ -2,6 +2,7 @@ package com.github.releaseuploader.data.repository
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.util.Base64
 import android.util.Log
 import com.github.releaseuploader.data.model.*
 import com.github.releaseuploader.network.ApiException
@@ -132,6 +133,62 @@ class GitHubRepository @Inject constructor(
             }
         }
         return lastResult
+    }
+
+    // ---- 仓库概览页 ----
+    suspend fun getRepoDetail(owner: String, repo: String): Result<Repo> =
+        safeApiCall(retryable = true) { api.getRepoDetail(owner, repo) }
+
+    suspend fun getReleases(owner: String, repo: String): Result<List<Release>> =
+        safeApiCall(retryable = true) { api.getReleases(owner, repo) }
+
+    suspend fun getContributors(owner: String, repo: String): Result<List<Contributor>> =
+        safeApiCall(retryable = true) { api.getContributors(owner, repo) }
+
+    /** 获取 README 并直接返回解码后的 Markdown 文本 */
+    suspend fun getReadme(owner: String, repo: String): Result<String> {
+        val result = safeApiCall(retryable = true) { api.getReadme(owner, repo) }
+        return result.map { item ->
+            if (item.encoding == "base64" && item.content != null) {
+                val clean = item.content.replace("\n", "").replace("\r", "")
+                String(Base64.decode(clean, Base64.DEFAULT), Charsets.UTF_8)
+            } else {
+                ""
+            }
+        }
+    }
+
+    /** 是否已标星：204=已标星，404=未标星，其余网络错误按未标星处理 */
+    suspend fun isStarred(owner: String, repo: String): Boolean {
+        return try {
+            api.checkStarred(owner, repo).code == 204
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun star(owner: String, repo: String): Result<Unit> =
+        safeApiCallVoid { api.starRepo(owner, repo) }
+
+    suspend fun unstar(owner: String, repo: String): Result<Unit> =
+        safeApiCallVoid { api.unstarRepo(owner, repo) }
+
+    /** 无 body 接口（标星 PUT/DELETE 返回 204）的统一包装 */
+    private suspend fun safeApiCallVoid(call: suspend () -> retrofit2.Response<okhttp3.ResponseBody>): Result<Unit> {
+        return try {
+            val response = call()
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(ApiException(response.code(), "HTTP 请求失败（${response.code()}）：${response.message()}"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**

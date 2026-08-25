@@ -1,94 +1,49 @@
 package com.github.releaseuploader.ui.screens
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CallSplit
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.github.releaseuploader.data.model.ContentItem
-import com.github.releaseuploader.service.UploadService
-import com.github.releaseuploader.service.UploadState
+import android.widget.TextView
+import com.github.releaseuploader.data.model.Repo
 import com.github.releaseuploader.ui.viewmodel.RepoDetailViewModel
+import io.noties.markwon.Markwon
 
+/** 仓库概览页：GitHub 官方 App 风格——仓库信息 + 功能入口（议题/PR/操作/发行版/贡献者/关注者/代码）+ README 渲染 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepoDetailScreen(
     owner: String,
     repo: String,
     branch: String,
-    onFileClick: (String) -> Unit,
+    onCodeClick: () -> Unit,
     onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: RepoDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val uploadState by UploadService.uploadProgress.collectAsState()
     val context = LocalContext.current
 
-    // 流程修正：先选文件 → 再建 Release → 成功后立即上传（避免取消选择留下空 Release）。
-    // rememberSaveable 存 String 列表（Uri 非自动可保存），旋转屏幕不丢已选文件
-    var pendingUris by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
-
-    // Android 13+ 通知权限（不授权也能上传，只是进度通知不显示）
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { }
-
-    // 注意：局部函数必须在使用它的 lambda 之前声明（Kotlin 词法作用域规则）
-    fun startUpload(uploadUrl: String, uris: List<Uri>) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        val intent = Intent(context, UploadService::class.java).apply {
-            putStringArrayListExtra(UploadService.EXTRA_FILES, ArrayList(uris.map { it.toString() }))
-            putExtra(UploadService.EXTRA_UPLOAD_URL, uploadUrl)
-        }
-        ContextCompat.startForegroundService(context, intent)
-    }
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            // 持久化 URI 读权限（跨设备重启仍有效）；部分 provider 不支持会抛 SecurityException，
-            // runCatching 降级为一次性权限（本次会话内仍可上传）
-            uris.forEach { uri ->
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                }
-            }
-            pendingUris = uris.map { it.toString() }
-            viewModel.createRelease(owner, repo) { uploadUrl ->
-                if (uploadUrl.isNotBlank() && pendingUris.isNotEmpty()) {
-                    startUpload(uploadUrl, pendingUris.map { Uri.parse(it) })
-                }
-            }
-        }
-    }
-
-    // 限流登出时导航回登录页
     LaunchedEffect(uiState.isLoggedOut) {
         if (uiState.isLoggedOut) {
             onLoggedOut()
@@ -96,61 +51,13 @@ fun RepoDetailScreen(
     }
 
     LaunchedEffect(Unit) {
-        // 页面进入时重置非上传中的残留进度（避免看到上次的旧 "上传完成！"）
-        if (!UploadService.uploadProgress.value.isUploading) {
-            UploadService.resetState()
-        }
-        viewModel.loadContents(owner, repo)
+        viewModel.loadDetail(owner, repo)
     }
 
-    // Release Dialog
-    if (uiState.showReleaseDialog) {
-        var tagInput by rememberSaveable { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { viewModel.hideReleaseDialog() },
-            title = { Text("创建 Release") },
-            text = {
-                Column {
-                    Text("输入 Release 标签名：")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = tagInput,
-                        onValueChange = { tagInput = it },
-                        label = { Text("标签（如 v1.0.0）") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (uiState.releaseError != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = uiState.releaseError!!,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.setReleaseTag(tagInput)
-                        filePickerLauncher.launch(arrayOf("*/*"))
-                    },
-                    enabled = tagInput.isNotBlank() && !uiState.isCreatingRelease
-                ) {
-                    if (uiState.isCreatingRelease) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                    } else {
-                        Text("选择文件并上传")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.hideReleaseDialog() }) {
-                    Text("取消")
-                }
-            }
-        )
+    fun openUrl(url: String) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
     }
 
     Scaffold(
@@ -161,63 +68,80 @@ fun RepoDetailScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "返回")
                     }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.showReleaseDialog() }) {
-                        Icon(Icons.Default.Upload, "上传 Release")
-                    }
                 }
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // 应用内上传进度（订阅 UploadService.uploadProgress）
-            if (uploadState.isUploading || uploadState.isComplete || uploadState.error != null) {
-                UploadProgressBanner(uploadState)
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                if (uiState.isLoading) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when {
+                uiState.isLoading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else if (uiState.error != null) {
+                }
+                uiState.repo == null -> {
                     Column(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("错误：${uiState.error}", color = MaterialTheme.colorScheme.error)
+                        Text("错误：${uiState.error ?: "仓库加载失败"}", color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { viewModel.loadContents(owner, repo) }) {
+                        Button(onClick = { viewModel.loadDetail(owner, repo) }) {
                             Text("重试")
                         }
                     }
-                } else {
+                }
+                else -> {
+                    val repoData = uiState.repo!!
                     LazyColumn {
-                        // Parent directory
-                        if (uiState.currentPath.isNotEmpty()) {
-                            item {
-                                ListItem(
-                                    headlineContent = { Text("..") },
-                                    leadingContent = {
-                                        Icon(Icons.Default.Folder, "上级目录")
-                                    },
-                                    modifier = Modifier.clickable {
-                                        val parentPath = uiState.currentPath.substringBeforeLast("/")
-                                        viewModel.loadContents(owner, repo, parentPath)
-                                    }
-                                )
+                        item { RepoHeader(repoData) }
+                        item {
+                            // 标星操作
+                            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleStar(owner, repo) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        if (uiState.isStarred) Icons.Default.Star else Icons.Outlined.Star,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = if (uiState.isStarred) Color(0xFFE3B341) else Color.Unspecified
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (uiState.isStarred) "已标星" else "标星")
+                                }
                             }
                         }
-                        items(uiState.contents, key = { it.path }) { item ->
-                            ContentItemRow(item = item, onClick = {
-                                if (item.type == "dir") {
-                                    viewModel.loadContents(owner, repo, item.path)
-                                } else {
-                                    onFileClick(item.path)
-                                }
-                            })
+                        // 功能入口
+                        item { EntryItem(Icons.Default.Circle, Color(0xFF1F883D), "议题", "${repoData.openIssuesCount} 个未解决", onClick = { openUrl("${repoData.htmlUrl}/issues") }) }
+                        item { EntryItem(Icons.Default.CallMerge, Color(0xFF0969DA), "拉取请求", onClick = { openUrl("${repoData.htmlUrl}/pulls") }) }
+                        item { EntryItem(Icons.Default.PlayArrow, Color(0xFFBF8700), "操作", onClick = { openUrl("${repoData.htmlUrl}/actions") }) }
+                        item {
+                            val latest = uiState.releases.firstOrNull()
+                            EntryItem(
+                                Icons.Default.Label,
+                                Color(0xFF24292F),
+                                "发行版",
+                                subtitle = if (uiState.releases.isEmpty()) null
+                                    else "${latest?.tagName} · 共 ${uiState.releases.size} 个",
+                                onClick = { openUrl("${repoData.htmlUrl}/releases") }
+                            )
+                        }
+                        item {
+                            EntryItem(
+                                Icons.Default.People,
+                                Color(0xFFBF3981),
+                                "贡献者",
+                                subtitle = if (uiState.contributors.isEmpty()) null else "${uiState.contributors.size} 人",
+                                onClick = { openUrl("${repoData.htmlUrl}/graphs/contributors") }
+                            )
+                        }
+                        item { EntryItem(Icons.Default.Visibility, Color(0xFFBF8700), "关注者", "${repoData.watchersCount} 人", onClick = { openUrl("${repoData.htmlUrl}/watchers") }) }
+                        item { EntryItem(Icons.Default.Folder, Color(0xFF57606A), "代码", "浏览仓库文件", onClick = onCodeClick) }
+                        // README
+                        if (uiState.readme.isNotBlank()) {
+                            item {
+                                ReadmeSection(uiState.readme)
+                            }
                         }
                     }
                 }
@@ -226,53 +150,94 @@ fun RepoDetailScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UploadProgressBanner(state: UploadState) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            when {
-                state.isUploading -> {
-                    Text(
-                        "正在上传 ${state.currentFile}（${state.fileIndex}/${state.totalFiles}）",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { state.overallProgress / 100f },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                state.isComplete -> {
-                    Text("上传完成！", color = MaterialTheme.colorScheme.primary)
-                }
-                state.error != null -> {
-                    Text("上传失败：${state.error}", color = MaterialTheme.colorScheme.error)
-                }
+private fun RepoHeader(repo: Repo) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(
+            text = repo.fullName,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        if (!repo.description.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = repo.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (repo.isPrivate) {
+                Text("🔒 私人", style = MaterialTheme.typography.labelMedium)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Star, null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(2.dp))
+                Text("${repo.stargazersCount} 个星标", style = MaterialTheme.typography.labelMedium)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.CallSplit, null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(2.dp))
+                Text("${repo.forksCount} 个复刻", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
 }
 
 @Composable
-private fun ContentItemRow(item: ContentItem, onClick: () -> Unit) {
+private fun EntryItem(
+    icon: ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit
+) {
     ListItem(
-        headlineContent = { Text(item.name) },
-        supportingContent = {
-            if (item.type == "file") {
-                Text("${item.size} bytes")
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(iconColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = iconColor, modifier = Modifier.size(20.dp))
             }
         },
-        leadingContent = {
-            Icon(
-                if (item.type == "dir") Icons.Default.Folder else Icons.Default.InsertDriveFile,
-                contentDescription = null
-            )
+        headlineContent = { Text(title, fontWeight = FontWeight.Medium) },
+        supportingContent = subtitle?.let { { Text(it) } },
+        trailingContent = {
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         },
         modifier = Modifier.clickable(onClick = onClick)
     )
+}
+
+@Composable
+private fun ReadmeSection(markdown: String) {
+    val context = LocalContext.current
+    val markwon = remember { Markwon.builder(context).build() }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text(
+            text = "README.md",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        AndroidView(
+            factory = { ctx ->
+                TextView(ctx).apply {
+                    // TextView.textSize 单位是 px，需乘 scaledDensity 得到等效 14sp
+                    textSize = 14f * ctx.resources.displayMetrics.scaledDensity
+                    setTextColor(android.graphics.Color.parseColor("#1F2328"))
+                    setPadding(16, 0, 16, 16)
+                }
+            },
+            update = { tv ->
+                markwon.setMarkdown(tv, markdown)
+            }
+        )
+    }
 }
