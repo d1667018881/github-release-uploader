@@ -443,6 +443,14 @@ implementation("group:artifact:version")
 - **API/模型扩展**：Repo 补充 `open_issues_count`/`watchers_count`/`owner` 等字段；新增 Contributor 模型、`getRepoDetail`/`getReleases`/`getContributors`/`getReadme`/`checkStarred`/`star`/`unstar` 接口。
 - **注意**：`retrofit2.Response.code` 是 Java 方法必须 `code()` 带括号（曾致编译失败）；标星接口返回 204 无 body，用独立的 `safeApiCallVoid` 包装（`safeApiCall` 会把 204+空 body 误判失败）。
 
+### 功能入口 App 内页面 + README 优化（2026-08-25 追加，commit b21bb51 + 7085ed2）
+
+- 概览页 6 个功能入口**不再跳浏览器**，改为 App 内列表页：发行版 / 贡献者 / 关注者 / 议题 / 拉取请求 / 操作。
+- 新增 6 个页面（各配 ViewModel）：`ReleasesScreen`（tag/名称/正文/时间/附件数）、`ContributorsScreen`（Coil 头像+贡献数）、`WatchersScreen`（Coil 头像）、`IssuesScreen`（绿点+#号+标题+时间）、`PullsScreen`（蓝分支+#号+标题）、`ActionsScreen`（工作流名+启用状态+路径）。
+- API 扩展：`getSubscribers`/`getIssues`/`getPulls`/`getWorkflows`；新增 `Issue`/`PullRequest`/`Workflow`+`WorkflowResponse` 模型。
+- NavGraph 用 `repoListScreen` 扩展统一注册 6 个列表路由（⚠️ 扩展函数内 `popBackStack` 需显式传 `NavHostController`，无隐式 receiver，曾致编译失败）。
+- README 渲染优化：13sp 字体、1.3 行距、深浅色主题适配（`MaterialTheme.colorScheme.onSurface/surface`）、紧凑标题栏（Description 图标 + labelMedium）。
+
 ---
 
 ## 十、快速调试命令
