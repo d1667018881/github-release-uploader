@@ -205,15 +205,19 @@ private fun downloadAsset(context: Context, asset: ReleaseAsset) {
         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
         .setAllowedOverMetered(true)
         .setAllowedOverRoaming(true)
-    val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // API 29+ 无需存储权限，直接存公共下载目录
         request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, asset.name)
-    } else {
-        request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, asset.name)
-    }
-    if (ok) {
         manager.enqueue(request)
         Toast.makeText(context, "已开始下载 ${asset.name}", Toast.LENGTH_SHORT).show()
     } else {
-        Toast.makeText(context, "下载失败：无法创建目标文件（可能已存在同名文件）", Toast.LENGTH_SHORT).show()
+        // API 26-28 避免请求存储权限，下载到 App 专属目录
+        val ok = request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, asset.name)
+        if (ok) {
+            manager.enqueue(request)
+            Toast.makeText(context, "已开始下载 ${asset.name}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "下载失败：无法创建目标文件（可能已存在同名文件）", Toast.LENGTH_SHORT).show()
+        }
     }
 }
