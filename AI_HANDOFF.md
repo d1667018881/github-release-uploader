@@ -480,15 +480,18 @@ print(f'Check Suite: {cs}')
 
 ---
 
-*此文档最后更新：2026-08-23*
- token $TOKEN" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-cs=d['check_suite_id']
-print(f'Check Suite: {cs}')
-"
-```
+*此文档最后更新：2026-08-26*
 
----
+### 详情页链路：Release 详情 + 工作流运行记录（2026-08-26 追加，commit a6ae780 + 13dff78 + fc608b8）
 
-*此文档最后更新：2026-08-23*
+> 用户反馈：发行版列表"显示不了详情和下载"、工作流"点不进去看具体情况"。补两层详情链路，全部 App 内完成，不跳浏览器。
+
+- **发行版详情页 `ReleaseDetailScreen`（路由 `repo_release_detail/{owner}/{repo}/{releaseId}`，releaseId 用 `NavType.LongType`）**：
+  - 列表项点击进入；显示完整 tag/名称/发布时间/完整 body + 附件（assets）列表（文件名/大小/下载次数）。
+  - 附件点击用**系统 DownloadManager 下载**（无需存储权限）：API 29+ `setDestinationInExternalPublicDir`（公共下载目录），API 26-28 `setDestinationInExternalFilesDir`（App 专属目录）。
+  - ⚠️ **两个 setDestination 方法都返回 `DownloadManager.Request`（不是 Boolean）**，不要写 `val ok = if (Q) ... else ...` 分支判断返回值（曾致两次编译失败），直接链式调用后 `enqueue` 即可。
+- **工作流运行记录页 `WorkflowRunsScreen`（路由 `repo_workflow_runs/{owner}/{repo}/{workflowId}/{workflowName}`）**：工作流列表点击进入，显示该工作流所有运行（`GET /actions/workflows/{workflow_id}/runs`）：`#运行号` + 分支 + 时间 + **状态徽标**（`WorkflowStatusBadge`：结论优先——success 绿/failure 红/cancelled 灰/in_progress 黄/queued 蓝，放 `WorkflowRunsScreen.kt` 内，RunJobsScreen 同包复用）。
+- **运行任务页 `RunJobsScreen`（路由 `repo_run_jobs/{owner}/{repo}/{runId}`）**：运行记录点击进入，显示 job 列表（`GET /actions/runs/{run_id}/jobs`）：名称 + 开始时间 + 状态徽标。
+- **模型**：`WorkflowRun`（id/run_number/name/head_branch/status/conclusion/created_at/html_url）+ `WorkflowRunResponse`（total_count/workflow_runs）、`WorkflowRunJob`（id/name/status/conclusion/started_at）+ `WorkflowRunJobResponse`。
+- **API/Repository 扩展**：`getRelease`（单 release 详情）、`getWorkflowRuns`、`getWorkflowRunJobs`，均 `retryable = true`。
+- **注意**：Releases/Actions 因需要额外点击回调，改为**独立 composable 注册**（不再走 `repoListScreen` 通用函数）；`ActionsScreen` 的 `Modifier.clickable` 必须显式 `import androidx.compose.foundation.clickable`（该文件原本没有此 import，漏加会编译失败）。
