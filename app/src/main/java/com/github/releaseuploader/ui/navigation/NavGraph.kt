@@ -43,6 +43,17 @@ sealed class Screen(val route: String) {
     data object Actions : Screen("repo_actions/{owner}/{repo}") {
         fun createRoute(owner: String, repo: String) = "repo_actions/$owner/$repo"
     }
+    // 详情页
+    data object ReleaseDetail : Screen("repo_release_detail/{owner}/{repo}/{releaseId}") {
+        fun createRoute(owner: String, repo: String, releaseId: Long) = "repo_release_detail/$owner/$repo/$releaseId"
+    }
+    data object WorkflowRuns : Screen("repo_workflow_runs/{owner}/{repo}/{workflowId}/{workflowName}") {
+        fun createRoute(owner: String, repo: String, workflowId: Long, workflowName: String) =
+            "repo_workflow_runs/$owner/$repo/$workflowId/${Uri.encode(workflowName)}"
+    }
+    data object RunJobs : Screen("repo_run_jobs/{owner}/{repo}/{runId}") {
+        fun createRoute(owner: String, repo: String, runId: Long) = "repo_run_jobs/$owner/$repo/$runId"
+    }
 }
 
 private fun NavHostController.navigateToLogin() {
@@ -196,9 +207,6 @@ fun NavGraph(navController: NavHostController) {
         }
 
         // 仓库功能列表页
-        repoListScreen(navController, Screen.Releases.route) { o, r, onLogout, onBack ->
-            ReleasesScreen(o, r, onLogout, onBack)
-        }
         repoListScreen(navController, Screen.Contributors.route) { o, r, onLogout, onBack ->
             ContributorsScreen(o, r, onLogout, onBack)
         }
@@ -211,8 +219,116 @@ fun NavGraph(navController: NavHostController) {
         repoListScreen(navController, Screen.Pulls.route) { o, r, onLogout, onBack ->
             PullsScreen(o, r, onLogout, onBack)
         }
-        repoListScreen(navController, Screen.Actions.route) { o, r, onLogout, onBack ->
-            ActionsScreen(o, r, onLogout, onBack)
+
+        // 发行版列表（点击进详情）
+        composable(
+            route = Screen.Releases.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            ReleasesScreen(
+                owner = owner,
+                repo = repo,
+                onReleaseClick = { releaseId ->
+                    navController.navigate(Screen.ReleaseDetail.createRoute(owner, repo, releaseId))
+                },
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 操作（工作流）列表（点击看运行记录）
+        composable(
+            route = Screen.Actions.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            ActionsScreen(
+                owner = owner,
+                repo = repo,
+                onWorkflowClick = { workflowId, workflowName ->
+                    navController.navigate(Screen.WorkflowRuns.createRoute(owner, repo, workflowId, workflowName))
+                },
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 发行版详情页（完整说明 + 附件下载）
+        composable(
+            route = Screen.ReleaseDetail.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("releaseId") { type = NavType.LongType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val releaseId = backStackEntry.arguments?.getLong("releaseId") ?: 0L
+            ReleaseDetailScreen(
+                owner = owner,
+                repo = repo,
+                releaseId = releaseId,
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 工作流运行记录页
+        composable(
+            route = Screen.WorkflowRuns.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("workflowId") { type = NavType.LongType },
+                navArgument("workflowName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val workflowId = backStackEntry.arguments?.getLong("workflowId") ?: 0L
+            val workflowName = backStackEntry.arguments?.getString("workflowName") ?: ""
+            WorkflowRunsScreen(
+                owner = owner,
+                repo = repo,
+                workflowId = workflowId,
+                workflowName = workflowName,
+                onRunClick = { runId ->
+                    navController.navigate(Screen.RunJobs.createRoute(owner, repo, runId))
+                },
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 运行任务（job）列表页
+        composable(
+            route = Screen.RunJobs.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("runId") { type = NavType.LongType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val runId = backStackEntry.arguments?.getLong("runId") ?: 0L
+            RunJobsScreen(
+                owner = owner,
+                repo = repo,
+                runId = runId,
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }

@@ -142,6 +142,9 @@ class GitHubRepository @Inject constructor(
     suspend fun getReleases(owner: String, repo: String): Result<List<Release>> =
         safeApiCall(retryable = true) { api.getReleases(owner, repo) }
 
+    suspend fun getRelease(owner: String, repo: String, releaseId: Long): Result<Release> =
+        safeApiCall(retryable = true) { api.getRelease(owner, repo, releaseId) }
+
     suspend fun getContributors(owner: String, repo: String): Result<List<Contributor>> =
         safeApiCall(retryable = true) { api.getContributors(owner, repo) }
 
@@ -156,6 +159,12 @@ class GitHubRepository @Inject constructor(
 
     suspend fun getWorkflows(owner: String, repo: String): Result<List<Workflow>> =
         safeApiCall(retryable = true) { api.getWorkflows(owner, repo) }.map { it.workflows }
+
+    suspend fun getWorkflowRuns(owner: String, repo: String, workflowId: Long): Result<List<WorkflowRun>> =
+        safeApiCall(retryable = true) { api.getWorkflowRuns(owner, repo, workflowId) }.map { it.workflowRuns }
+
+    suspend fun getWorkflowRunJobs(owner: String, repo: String, runId: Long): Result<List<WorkflowRunJob>> =
+        safeApiCall(retryable = true) { api.getWorkflowRunJobs(owner, repo, runId) }.map { it.jobs }
 
     /** 获取 README 并直接返回解码后的 Markdown 文本 */
     suspend fun getReadme(owner: String, repo: String): Result<String> {

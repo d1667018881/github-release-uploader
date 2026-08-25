@@ -62,6 +62,13 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 5
     ): Response<List<Release>>
 
+    @GET("repos/{owner}/{repo}/releases/{release_id}")
+    suspend fun getRelease(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("release_id") releaseId: Long
+    ): Response<Release>
+
     @GET("repos/{owner}/{repo}/contributors")
     suspend fun getContributors(
         @Path("owner") owner: String,
@@ -97,6 +104,22 @@ interface GitHubApi {
         @Path("owner") owner: String,
         @Path("repo") repo: String
     ): Response<WorkflowResponse>
+
+    @GET("repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs")
+    suspend fun getWorkflowRuns(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("workflow_id") workflowId: Long,
+        @Query("per_page") perPage: Int = 30
+    ): Response<WorkflowRunResponse>
+
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}/jobs")
+    suspend fun getWorkflowRunJobs(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long,
+        @Query("per_page") perPage: Int = 30
+    ): Response<WorkflowRunJobResponse>
 
     @GET("repos/{owner}/{repo}/readme")
     suspend fun getReadme(

@@ -24,6 +24,7 @@ import com.github.releaseuploader.ui.viewmodel.ReleasesViewModel
 fun ReleasesScreen(
     owner: String,
     repo: String,
+    onReleaseClick: (Long) -> Unit,
     onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: ReleasesViewModel = hiltViewModel()
@@ -68,7 +69,7 @@ fun ReleasesScreen(
                 else -> {
                     LazyColumn {
                         items(uiState.releases, key = { it.id }) { release ->
-                            ReleaseItem(release)
+                            ReleaseItem(release) { onReleaseClick(release.id) }
                         }
                     }
                 }
@@ -78,11 +79,12 @@ fun ReleasesScreen(
 }
 
 @Composable
-private fun ReleaseItem(release: Release) {
+private fun ReleaseItem(release: Release, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

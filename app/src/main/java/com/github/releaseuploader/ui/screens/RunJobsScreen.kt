@@ -1,33 +1,31 @@
 package com.github.releaseuploader.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.github.releaseuploader.data.model.Workflow
-import com.github.releaseuploader.ui.viewmodel.ActionsViewModel
+import com.github.releaseuploader.data.model.WorkflowRunJob
+import com.github.releaseuploader.ui.viewmodel.RunJobsViewModel
 
-/** 操作（工作流）列表页 */
+/** 运行记录的任务（job）列表页 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ActionsScreen(
+fun RunJobsScreen(
     owner: String,
     repo: String,
-    onWorkflowClick: (Long, String) -> Unit,
+    runId: Long,
     onLoggedOut: () -> Unit,
     onBack: () -> Unit,
-    viewModel: ActionsViewModel = hiltViewModel()
+    viewModel: RunJobsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -35,13 +33,13 @@ fun ActionsScreen(
         if (uiState.isLoggedOut) onLoggedOut()
     }
     LaunchedEffect(Unit) {
-        viewModel.loadWorkflows(owner, repo)
+        viewModel.loadJobs(owner, repo, runId)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("操作") },
+                title = { Text("运行任务") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "返回")
@@ -60,16 +58,16 @@ fun ActionsScreen(
                     ) {
                         Text("错误：${uiState.error}", color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { viewModel.loadWorkflows(owner, repo) }) { Text("重试") }
+                        Button(onClick = { viewModel.loadJobs(owner, repo, runId) }) { Text("重试") }
                     }
                 }
-                uiState.workflows.isEmpty() -> {
-                    Text("暂无工作流", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                uiState.jobs.isEmpty() -> {
+                    Text("暂无任务", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 else -> {
                     LazyColumn {
-                        items(uiState.workflows, key = { it.id }) { workflow ->
-                            WorkflowRow(workflow) { onWorkflowClick(workflow.id, workflow.name) }
+                        items(uiState.jobs, key = { it.id }) { job ->
+                            JobRow(job)
                         }
                     }
                 }
@@ -79,28 +77,26 @@ fun ActionsScreen(
 }
 
 @Composable
-private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
+private fun JobRow(job: WorkflowRunJob) {
     ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        leadingContent = {
-            Icon(
-                Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = Color(0xFFBF8700),
-                modifier = Modifier.size(22.dp)
-            )
-        },
         headlineContent = {
-            Text(
-                text = workflow.name,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = job.name,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                WorkflowStatusBadge(status = job.status, conclusion = job.conclusion)
+            }
         },
         supportingContent = {
             Text(
-                text = if (workflow.state == "active") "已启用 · ${workflow.path}" else "已禁用 · ${workflow.path}",
-                color = if (workflow.state == "active") Color(0xFF1F883D) else MaterialTheme.colorScheme.onSurfaceVariant
+                text = "开始于 ${job.startedAt.take(16).replace('T', ' ')}",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     )
