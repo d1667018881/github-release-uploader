@@ -266,7 +266,7 @@ implementation("group:artifact:version")
 ### ❌ 禁止做
 
 - 删除 `permissions: contents: write` 权限
-- 修改 Release 的签名配置（必须使用 Debug 签名）
+- 修改 Release 的签名流程（固定 keystore 从 GitHub Secrets 读取，**不要改回 debug 签名**）
 - 硬编码 Token 或密钥到代码中
 - 把真实 Token 写进 AI_HANDOFF.md / README / commit message / issue（占位用 `ghp_xxx` 即可）
 - 修改 `gradle-wrapper.properties` 中的 distributionUrl 为不兼容版本
@@ -330,7 +330,7 @@ implementation("group:artifact:version")
 | 告警 | 不修改理由 |
 |------|-----------|
 | targetSdk/compileSdk 升 35 | AGP 8.5.2 最高支持 compileSdk 34，升 35 必须同步升 AGP（需 8.6+），未经验证矩阵、CI 有失败风险；项目走 GitHub Release 自分发不上 Play Store，无合规压力。**如要升，必须单独验证并更新第六节兼容矩阵** |
-| release 换正式签名 | debug 签名是项目**有意为之**（CI 每次构建签名一致、可覆盖安装，适合个人自分发）；正式签名需 keystore 注入 CI secrets，属分发策略升级而非代码缺陷 |
+| release 换正式签名 | 原评估：debug 签名是有意为之、无需改；**已于 2026-08-25 落地固定 keystore**（存 GitHub Secrets，CI 解码签名），保证 CI 构建签名一致、可覆盖安装（commit：签名修复） |
 | 开启 R8 混淆（isMinifyEnabled） | 需补充 Retrofit/Gson keep 规则并回归测试，收益（体积）低风险高；APK 约 12MB 可接受 |
 | 依赖升级（BOM 2024.06 / AGP 8.5.2 / Kotlin 2.0.0） | 未验证兼容矩阵；升级必须走第六节流程先验证 |
 | material-icons-extended / security-crypto | 审查报告原文建议「保留即可 / 知悉风险」；icons 依赖实际使用中，移除需替换图标集 |
@@ -463,6 +463,17 @@ for c in json.load(sys.stdin):
 # 查看工作流注释/警告
 curl -s "https://api.github.com/repos/${REPO}/actions/runs/{run_id}" \
   -H "Authorization: token $TOKEN" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+cs=d['check_suite_id']
+print(f'Check Suite: {cs}')
+"
+```
+
+---
+
+*此文档最后更新：2026-08-23*
+ token $TOKEN" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 cs=d['check_suite_id']

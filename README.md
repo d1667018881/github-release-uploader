@@ -49,16 +49,24 @@
 
 ### 签名配置
 
-Release 构建使用 Android 默认 Debug 签名，**保证每次构建的 APK 签名一致，可覆盖安装**：
+Release 构建使用**固定的 release keystore**（存于 GitHub Secrets：`KEYSTORE_BASE64`/`KEYSTORE_PASSWORD`/`KEYSTORE_ALIAS`），CI 每次构建解码后签名，**保证每次构建的 APK 签名一致、可覆盖安装**：
+
+- CI 构建：`./gradlew assembleRelease -PkeystorePath=... -PkeystorePassword=... -PkeystoreAlias=...`
+- 本地/无 keystore 参数：回退 Android debug 签名（本地 debug.keystore 固定，可覆盖安装）
+
+> ⚠️ 历史坑：此前 Release 用 debug 签名，但 **CI runner 每次全新环境会自动生成新的 debug.keystore，导致每次构建签名不同、无法覆盖安装**（已修复，改用固定 keystore 存 Secrets）。
 
 ```kotlin
 signingConfigs {
     getByName("debug")
+    create("release") { /* 从 -PkeystorePath/-PkeystorePassword/-PkeystoreAlias 读取 */ }
 }
 buildTypes {
     getByName("release") {
         isMinifyEnabled = false
-        signingConfig = signingConfigs.getByName("debug")
+        // 有 keystore 参数用固定签名，否则回退 debug
+        signingConfig = if (findProperty("keystorePath") != null) signingConfigs.getByName("release")
+            else signingConfigs.getByName("debug")
     }
 }
 ```
@@ -319,7 +327,7 @@ github-release-uploader/
 | 网络请求 401 | Token 过期或无效，重新登录 |
 | 网络请求 403 | API 限流，检查 Rate Limit 状态 |
 | 文件过大无法查看 | 大于 1MB 的文件提示去网页端查看 |
-| 签名不一致无法覆盖安装 | Release 使用 Debug 签名，确保卸载旧版本后重装或使用同一签名 |
+| 签名不一致无法覆盖安装 | 此前 CI 每次自动生成新 debug.keystore | 改用固定 keystore 存 GitHub Secrets，CI 解码签名（见"签名配置"） |
 
 ---
 
@@ -441,6 +449,13 @@ curl -s -X PUT "https://api.github.com/repos/${REPO}/contents/path/to/file" \
 ---
 
 ## 📄 许可证
+
+MIT License
+
+---
+
+*最后更新：2026-08-23*
+许可证
 
 MIT License
 

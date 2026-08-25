@@ -21,12 +21,26 @@ android {
 
     signingConfigs {
         getByName("debug")
+        create("release") {
+            // CI 通过 -PkeystorePath 等传入固定 keystore（保证每次构建签名一致、可覆盖安装）；
+            // 未传入时该配置为空，buildTypes 回退 debug 签名
+            val keystorePath = project.findProperty("keystorePath") as? String
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = project.findProperty("keystorePassword") as? String ?: ""
+                keyAlias = project.findProperty("keystoreAlias") as? String ?: ""
+                keyPassword = project.findProperty("keystorePassword") as? String ?: ""
+            }
+        }
     }
 
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // CI 有固定 keystore 用它；本地/手动构建回退 debug 签名
+            val keystorePath = project.findProperty("keystorePath") as? String
+            signingConfig = if (keystorePath != null) signingConfigs.getByName("release")
+            else signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
