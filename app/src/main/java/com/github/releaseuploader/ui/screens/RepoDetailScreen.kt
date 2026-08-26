@@ -31,7 +31,7 @@ import com.github.releaseuploader.ui.viewmodel.RepoDetailViewModel
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonSpansFactory
-import io.noties.markwon.core.HeadingProps
+import io.noties.markwon.core.CoreProps
 import org.commonmark.node.Heading
 
 /** 仓库概览页：GitHub 官方 App 风格——仓库信息 + 功能入口（议题/PR/操作/发行版/贡献者/关注者/代码）+ README 渲染 */
@@ -227,8 +227,8 @@ private fun ReadmeSection(markdown: String) {
         Markwon.builder(context)
             .usePlugin(object : AbstractMarkwonPlugin() {
                 override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
-                    builder.setFactory(Heading) { configuration, props ->
-                        val level = props.get(HeadingProps.LEVEL) ?: 1
+                    builder.setFactory(Heading::class.java) { _, props ->
+                        val level = props.get(CoreProps.HEADING_LEVEL) ?: 1
                         val ratio = when (level) {
                             1 -> 1.2f
                             2 -> 1.1f
