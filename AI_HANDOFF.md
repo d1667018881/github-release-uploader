@@ -505,11 +505,32 @@ print(f'Check Suite: {cs}')
 - **README 字号再缩小**：
   - `textSize` 13sp → **12sp**，行距保持 1.3。
   - ⚠️ Markwon 默认 heading 会放大到 **1.6 倍**（这就是"字体太大"的真正来源），必须自定义 SpanFactory 限制：`builder.setFactory(Heading::class.java) { _, props -> ... }`，级别取自 **`CoreProps.HEADING_LEVEL`**（`io.noties.markwon.core.CoreProps`，4.6.2 无 `HeadingProps` 类！），h1 1.2x / h2 1.1x / h3 1.05x，配 `RelativeSizeSpan` + `StyleSpan(BOLD)`。注意 `setFactory` 第一参要传 `Heading::class.java` 而非 `Heading`。
+  - ⚠️⚠️ **二次放大 bug（README 字体偏大的真正根源）**：`TextView.textSize = 12f * ctx.resources.displayMetrics.scaledDensity` 是错的——`setTextSize(float)` 默认单位已是 sp（内部自动乘 scaledDensity），再手动乘一次等于 `12 * scaledDensity²`，字体放大 scaledDensity 倍。必须直接 `textSize = 12f`。代码页（CodeBrowserScreen 纯 Compose Text 13.sp）无此问题，所以"代码页正常、概览页偏大"。
 - **工作流日志查看**：
   - `RunJobsScreen`：job 行可点击 → `JobLogsScreen`（路由 `repo_job_logs/{owner}/{repo}/{jobId}/{jobName}`）。
   - `JobLogsScreen`：等宽字体（`FontFamily.Monospace`）11sp 逐行显示日志全文，顶部「复制」按钮（ClipboardManager 整段复制）。
   - API：`GET /actions/jobs/{job_id}/logs`（GitHub 302 重定向到日志文本，**OkHttp 自动跟随**），Repository 包装为 `getJobLogs` 返回 `Result<String>`（`.map { it.string() }`）。
   - `WorkflowRun` 模型补 `event`（触发事件：push/workflow_dispatch 等）和 `actor`（User），运行记录行显示「分支 · 触发：事件 · 触发者 · 时间」。
+
+### 工作流对齐官方 App + README 字号根治（2026-08-26 追加，commit 9fcd387）
+
+> 用户反馈（对照 GitHub 官方 App 截图）：①概览页 README 字体仍偏大；②工作流详情信息少（官方有构建耗时、产物）；③日志全挤一块，官方是分步骤展示、失败红×/成功绿✓可精准定位。
+
+- **README 字体偏大根治**：真正根源是 `textSize = 12f * scaledDensity` **二次放大**（setTextSize 默认 sp 已含 scaledDensity，再乘一次 = 平方放大）。已改为 `textSize = 12f`。配合上轮 Markwon heading 限制（1.2x 封顶），概览页 README 现在与功能入口文字相当。
+- **运行详情页（RunJobsScreen 升级，路由不变 `repo_run_jobs/{owner}/{repo}/{runId}`）**：
+  - 顶部概要卡片：`#运行号 名称` + 状态徽标 + **耗时**（`formatDuration(createdAt, completedAt)`，进行中算到当前时间）+ 触发：事件 · 触发者 + 分支。
+  - **产物（Artifacts）区块**：`GET /actions/runs/{run_id}/artifacts`，显示名称/大小/过期时间，点击**下载 zip**——`archive_download_url` 需认证，走 Retrofit `@Streaming @GET downloadArtifact(@Url)`（AuthInterceptor 自动带 token），ViewModel 里流式写入 Downloads（API 29+ 公共目录/低版本 App 专属目录），Toast 提示路径。
+  - job 行显示耗时 + 开始时间。
+- **任务详情页（新，JobDetailScreen，路由 `repo_job_detail/{owner}/{repo}/{jobId}/{jobName}`）**：
+  - `GET /actions/jobs/{job_id}` 返回 job 含 **steps** 数组。
+  - 头部：job 名 + 状态徽标 + 耗时；步骤列表：**状态图标**（success 绿 ✓ CheckCircle / failure 红 ✗ Cancel / in_progress 黄圈 / skipped 灰 SkipNext）+ 步骤名（等宽字体）+ 每步耗时，点击步骤进日志页。
+- **步骤日志页（新，StepLogsScreen，路由 `repo_step_logs/{owner}/{repo}/{jobId}/{stepNumber}/{stepName}`，替代旧 JobLogsScreen 已删除）**：
+  - 完整 job 日志按 **`##[group]<步骤名>` / `##[endgroup]`** 标记切块（`StepLogsViewModel.extractStepLog`：①块标题精确匹配步骤名 → ②按 number-1 索引 → ③整段兜底）。
+  - 逐行渲染：`##[error]` 标红、`##[warning]` 标黄、`##[notice]` 标蓝，去掉标记前缀；等宽 11sp；可复制当前步骤日志。
+- **模型**：WorkflowRun 加 `completed_at`；WorkflowRunJob 加 `completed_at` + `steps: List<WorkflowRunStep>?`；新 WorkflowRunStep（id/name/status/conclusion/number/started_at/completed_at）、Artifact + ArtifactResponse。
+- **API/Repository**：新增 `getWorkflowRun`（run 详情）、`getRunArtifacts`、`getJobDetail`、`downloadArtifact`（@Streaming 流式）；Repository 对应 4 方法。
+- **共用工具**（放 `WorkflowRunsScreen.kt`，同包复用）：`formatDuration(startIso, endIso)` 用 `java.time.Instant` 解析（minSdk 26 可用），输出 "X分X秒"/"X小时X分"。
+- ⚠️ 删除文件走 git trees API：`{'path': ..., 'sha': None}`（base_tree 不列出的文件会保留，必须显式 sha:null 删除）；RunJobsViewModel 注入 `@ApplicationContext` 用于产物落盘路径。
 
 ---
 
