@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.content.Intent
+import android.net.Uri
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.widget.TextView
@@ -30,6 +32,7 @@ import com.github.releaseuploader.data.model.Repo
 import com.github.releaseuploader.ui.viewmodel.RepoDetailViewModel
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.MarkwonSpansFactory
 import io.noties.markwon.core.CoreProps
 import org.commonmark.node.Heading
@@ -48,6 +51,8 @@ fun RepoDetailScreen(
     onReleasesClick: () -> Unit,
     onContributorsClick: () -> Unit,
     onWatchersClick: () -> Unit,
+    /** README 里指向本仓库文件的链接（相对路径），App 内打开代码页 */
+    onReadmeLinkClick: (String) -> Unit,
     onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: RepoDetailViewModel = hiltViewModel()
@@ -144,7 +149,7 @@ fun RepoDetailScreen(
                         // README
                         if (uiState.readme.isNotBlank()) {
                             item {
-                                ReadmeSection(uiState.readme)
+                                ReadmeSection(uiState.readme, onLinkClick = onReadmeLinkClick)
                             }
                         }
                     }
@@ -219,8 +224,10 @@ private fun EntryItem(
 }
 
 @Composable
-private fun ReadmeSection(markdown: String) {
+private fun ReadmeSection(markdown: String, onLinkClick: (String) -> Unit) {
     val context = LocalContext.current
+    // remember 捕获的是首次值，用 rememberUpdatedState 让 linkResolver 始终拿到最新回调
+    val currentOnLinkClick by rememberUpdatedState(onLinkClick)
     // 限制 Markdown 标题字号：默认 heading 会放大到 1.6 倍导致"字体太大"，
     // 自定义 SpanFactory 让 h1-h3 最大只放大 1.2/1.1/1.05 倍
     val markwon = remember {
@@ -236,6 +243,22 @@ private fun ReadmeSection(markdown: String) {
                             else -> 1.0f
                         }
                         arrayOf(RelativeSizeSpan(ratio), StyleSpan(Typeface.BOLD))
+                    }
+                }
+
+                override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                    // README 链接：仓库内相对链接在 App 内打开（代码页），外部 http(s) 保持浏览器
+                    builder.linkResolver { view, link ->
+                        val clean = link.substringBefore('#').substringBefore('?')
+                        if (clean.startsWith("http://") || clean.startsWith("https://")) {
+                            runCatching {
+                                view.context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(link))
+                                )
+                            }
+                        } else if (clean.isNotBlank()) {
+                            currentOnLinkClick(clean)
+                        }
                     }
                 }
             })

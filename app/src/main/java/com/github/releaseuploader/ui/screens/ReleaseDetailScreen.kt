@@ -1,10 +1,5 @@
 package com.github.releaseuploader.ui.screens
 
-import android.app.DownloadManager
-import android.content.Context
-import android.net.Uri
-import android.os.Build
-import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -45,6 +40,12 @@ fun ReleaseDetailScreen(
     }
     LaunchedEffect(Unit) {
         viewModel.loadRelease(owner, repo, releaseId)
+    }
+    // 下载结果提示
+    LaunchedEffect(uiState.downloadMessage) {
+        uiState.downloadMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+        }
     }
 
     Scaffold(
@@ -93,7 +94,7 @@ fun ReleaseDetailScreen(
                             }
                             items(assets, key = { it.id }) { asset ->
                                 AssetRow(asset) {
-                                    downloadAsset(context, asset)
+                                    viewModel.downloadAsset(asset)
                                 }
                             }
                         }
@@ -190,28 +191,4 @@ private fun formatSize(bytes: Long): String {
     val mb = kb / 1024.0
     if (mb < 1024) return "%.1f MB".format(mb)
     return "%.2f GB".format(mb / 1024.0)
-}
-
-/** 用系统 DownloadManager 下载附件（无需存储权限，API 29+ 存公共下载目录，旧版本存 App 专属目录） */
-private fun downloadAsset(context: Context, asset: ReleaseAsset) {
-    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-        ?: run {
-            Toast.makeText(context, "系统下载服务不可用", Toast.LENGTH_SHORT).show()
-            return
-        }
-    val request = DownloadManager.Request(Uri.parse(asset.browserDownloadUrl))
-        .setTitle(asset.name)
-        .setDescription("GitHub Release 附件下载")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setAllowedOverMetered(true)
-        .setAllowedOverRoaming(true)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        // API 29+ 无需存储权限，直接存公共下载目录
-        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, asset.name)
-    } else {
-        // API 26-28 避免请求存储权限，下载到 App 专属目录
-        request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, asset.name)
-    }
-    manager.enqueue(request)
-    Toast.makeText(context, "已开始下载 ${asset.name}", Toast.LENGTH_SHORT).show()
 }

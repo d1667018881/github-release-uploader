@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,8 @@ fun StepLogsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    // 自动换行开关：开启后日志行占满屏宽自动换行（不再横向滑动）
+    var wrapLines by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isLoggedOut) {
         if (uiState.isLoggedOut) onLoggedOut()
@@ -57,6 +60,9 @@ fun StepLogsScreen(
                 },
                 actions = {
                     if (uiState.lines.isNotEmpty()) {
+                        TextButton(onClick = { wrapLines = !wrapLines }) {
+                            Text(if (wrapLines) "换行：开" else "换行：关")
+                        }
                         TextButton(onClick = {
                             val clip = ClipData.newPlainText("step_logs", uiState.lines.joinToString("\n"))
                             (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? ClipboardManager)
@@ -93,7 +99,7 @@ fun StepLogsScreen(
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(uiState.lines) { index, rawLine ->
-                            LogLine(rawLine)
+                            LogLine(rawLine, wrap = wrapLines)
                         }
                     }
                 }
@@ -103,7 +109,7 @@ fun StepLogsScreen(
 }
 
 @Composable
-private fun LogLine(rawLine: String) {
+private fun LogLine(rawLine: String, wrap: Boolean) {
     // 去掉 ##[error]/##[warning]/##[notice] 标记前缀，并着色
     val (text, color) = when {
         rawLine.startsWith("##[error]") -> rawLine.removePrefix("##[error]").trimStart() to Color(0xFFCF222E)
@@ -121,7 +127,10 @@ private fun LogLine(rawLine: String) {
         maxLines = Int.MAX_VALUE,
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .then(
+                // 关闭换行时保持横向滚动；开启时占满宽度自动换行
+                if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState())
+            )
             .padding(horizontal = 12.dp, vertical = 1.dp)
     )
 }

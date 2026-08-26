@@ -155,6 +155,12 @@ fun NavGraph(navController: NavHostController) {
                 onWatchersClick = {
                     navController.navigate(Screen.Watchers.createRoute(owner, repo))
                 },
+                onReadmeLinkClick = { path ->
+                    // README 里指向本仓库的文档链接，App 内打开代码页
+                    if (path.isNotBlank()) {
+                        navController.navigate(Screen.CodeBrowser.createRoute(owner, repo, branch, path))
+                    }
+                },
                 onLoggedOut = {
                     navController.navigateToLogin()
                 },
