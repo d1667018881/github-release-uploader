@@ -545,6 +545,19 @@ print(f'Check Suite: {cs}')
   - 第三行：**圆角标签组** `MetaTag`（surfaceVariant 底 + labelSmall）：⏱ 耗时 / 🌿 分支 / 📅 **相对时间**（`timeAgo`："刚刚/X分钟前/X小时前/X天前"）。
 - **模型**：WorkflowRun 加 `head_sha`、`head_commit`（新 `RunHeadCommit(message, sha)`）。
 
+### 耗时计算修复 + 产物系统下载（2026-08-26 追加，commit 28d7e1a）
+
+> 用户反馈：①列表/详情页"耗时 X小时"显示成几十小时，疑似把时间当耗时；②产物点击后 App 内一直转圈直到下载完；③希望长按复制下载链接。
+
+- **耗时"伪数据"根因**：GitHub **runs API 没有 `completed_at` 字段**（那是 jobs 的）。原 `formatDuration(start, end)` 在 end 为 null 时 fallback 到 `Instant.now()`——把"距创建时间"当成了耗时，导致列表每条都显示"⏱ 2小时51分"（实际是几小时前创建的排队+等待时间），与 📅 相对时间标签几乎重复。
+  - **修复**：①`formatDuration` 的 end 为 null **返回空字符串**（不再 fallback now），进行中由状态徽标体现；②超过 24 小时显示 **"X天X小时"**（不再"几十小时"）；③WorkflowRun 改用真实字段 `run_started_at`（实际开始，不含排队）→ `updated_at` 计算耗时（runs API 的 run 耗时正确口径）。
+  - ⚠️ 教训：**runs 接口耗时 = run_started_at → updated_at；jobs 接口耗时 = started_at → completed_at**；created_at 含排队时间不可用于耗时。
+- **产物下载改系统 DownloadManager**（不再 App 内转圈）：
+  - `RunJobsViewModel.downloadArtifact`：`DownloadManager.Request.addRequestHeader("Authorization", "token xxx")` 带 token（`TokenManager.getToken()`），GitHub 302 重定向到**带签名的下载 URL**（无需再带 header），DownloadManager 可正常跟随；进度由系统通知栏展示。
+  - API 29+ 存公共下载目录，26-28 存 App 专属目录（`setDestinationInExternalFilesDir`，两者都返回 Request 非 Boolean）。
+- **产物长按复制下载链接**：`ArtifactRow` 用 `combinedClickable(onClick, onLongClick)`（`@OptIn(ExperimentalFoundationApi::class)`），长按复制 `archive_download_url` 到剪贴板并 Toast。
+- 移除 `RunJobsUiState.isDownloading`（下载状态交给系统）；Repository 的 `downloadArtifactStream` 保留未删（当前无调用方）。
+
 ---
 
 *此文档最后更新：2026-08-26*
