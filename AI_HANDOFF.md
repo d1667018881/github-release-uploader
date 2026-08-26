@@ -482,9 +482,7 @@ print(f'Check Suite: {cs}')
 
 *此文档最后更新：2026-08-26*
 
-### 详情页链路：Release 详情 + 工作流运行记录（2026-08-26 追加，commit a6ae780 + 13dff78 + fc608b8）
-
-> 用户反馈：发行版列表"显示不了详情和下载"、工作流"点不进去看具体情况"。补两层详情链路，全部 App 内完成，不跳浏览器。
+### 详情页链路：Release 详情 + 工作流运行记录（2026-08-26 追加，commit a6ae780 + 13dff78 + fc608b8）> 用户反馈：发行版列表"显示不了详情和下载"、工作流"点不进去看具体情况"。补两层详情链路，全部 App 内完成，不跳浏览器。
 
 - **发行版详情页 `ReleaseDetailScreen`（路由 `repo_release_detail/{owner}/{repo}/{releaseId}`，releaseId 用 `NavType.LongType`）**：
   - 列表项点击进入；显示完整 tag/名称/发布时间/完整 body + 附件（assets）列表（文件名/大小/下载次数）。
@@ -495,3 +493,24 @@ print(f'Check Suite: {cs}')
 - **模型**：`WorkflowRun`（id/run_number/name/head_branch/status/conclusion/created_at/html_url）+ `WorkflowRunResponse`（total_count/workflow_runs）、`WorkflowRunJob`（id/name/status/conclusion/started_at）+ `WorkflowRunJobResponse`。
 - **API/Repository 扩展**：`getRelease`（单 release 详情）、`getWorkflowRuns`、`getWorkflowRunJobs`，均 `retryable = true`。
 - **注意**：Releases/Actions 因需要额外点击回调，改为**独立 composable 注册**（不再走 `repoListScreen` 通用函数）；`ActionsScreen` 的 `Modifier.clickable` 必须显式 `import androidx.compose.foundation.clickable`（该文件原本没有此 import，漏加会编译失败）。
+
+### 创建 Release 移入发行版页 + README 字号 + job 日志（2026-08-26 追加，commit ebe2521 + 9881934）
+
+> 用户反馈三点：①创建 Release 不该在代码页；②README 字体仍偏大；③工作流日志看不到具体内容、信息不全。
+
+- **创建 Release 从代码页移到发行版页**：
+  - `ReleasesScreen`：新增 FAB「新建发行版」→ 对话框输入 tag → 选文件 → `createRelease` 成功后启动 `UploadService` 上传附件（流程与原来一致：先选文件再建 Release，避免取消留下空 Release）；上传进度横幅 + 完成后自动刷新列表。
+  - `RepoFilesScreen`/`RepoFilesViewModel`：**彻底移除** Release 创建 UI（Upload 图标按钮、对话框、文件选择器、上传进度横幅）及对应 ViewModel 状态/方法，代码页只保留目录浏览 + 代码查看。
+  - ⚠️ 上传状态监听：`UploadService.uploadProgress` 是全局 StateFlow，页面进入时 `resetState()` 需判断非上传中，避免清掉正在进行的进度。
+- **README 字号再缩小**：
+  - `textSize` 13sp → **12sp**，行距保持 1.3。
+  - ⚠️ Markwon 默认 heading 会放大到 **1.6 倍**（这就是"字体太大"的真正来源），必须自定义 SpanFactory 限制：`builder.setFactory(Heading::class.java) { _, props -> ... }`，级别取自 **`CoreProps.HEADING_LEVEL`**（`io.noties.markwon.core.CoreProps`，4.6.2 无 `HeadingProps` 类！），h1 1.2x / h2 1.1x / h3 1.05x，配 `RelativeSizeSpan` + `StyleSpan(BOLD)`。注意 `setFactory` 第一参要传 `Heading::class.java` 而非 `Heading`。
+- **工作流日志查看**：
+  - `RunJobsScreen`：job 行可点击 → `JobLogsScreen`（路由 `repo_job_logs/{owner}/{repo}/{jobId}/{jobName}`）。
+  - `JobLogsScreen`：等宽字体（`FontFamily.Monospace`）11sp 逐行显示日志全文，顶部「复制」按钮（ClipboardManager 整段复制）。
+  - API：`GET /actions/jobs/{job_id}/logs`（GitHub 302 重定向到日志文本，**OkHttp 自动跟随**），Repository 包装为 `getJobLogs` 返回 `Result<String>`（`.map { it.string() }`）。
+  - `WorkflowRun` 模型补 `event`（触发事件：push/workflow_dispatch 等）和 `actor`（User），运行记录行显示「分支 · 触发：事件 · 触发者 · 时间」。
+
+---
+
+*此文档最后更新：2026-08-26*
