@@ -568,6 +568,31 @@ print(f'Check Suite: {cs}')
   - ⚠️ `remember { }` 捕获的是首次闭包，回调必须用 `rememberUpdatedState` 包一层，否则 linkResolver 永远拿到旧回调。
 - **日志自动换行按钮**：`StepLogsScreen` 加 `wrapLines` 开关（rememberSaveable，TopAppBar「换行：开/关」按钮）；开启时日志行 `Modifier.fillMaxWidth()` 自动换行占满屏宽，关闭时保持 `horizontalScroll` 横向滚动。
 
+### 智谱 Round 5 审查处理（2026-08-26/27 追加，commit cf113c8 + 9e81517 + AI_HANDOFF）
+
+> 智谱里程碑全读（46 文件/3900 行），B1-B8 缺陷 + O 系列。按约定逐条处理，不成立的写明理由。
+
+**已修复（第一批全做 + 第二批最小改 + 部分 O）**：
+- **B1（ANR）**：`getJobLogs`/`getReadme` 改 `withContext(Dispatchers.IO)`——日志/README 可达数 MB，`ResponseBody.string()`/Base64 解码不能再在主线程（viewModelScope.launch = Main）。
+- **B2（截断）**：`getReleases` perPage 5→30、`getContributors` 10→30。分页机制（加载更多/自动翻页）留后续迭代。
+- **B3（链接 404）**：README linkResolver 归一化——`./` 前缀、开头 `/` 剥掉；`mailto:`/`tel:` 交系统 Intent 不走仓库内。目录链接（contents API 返回数组致 Gson 异常）在 CodeBrowserViewModel 错误文案改为"此链接指向目录或无法解析的文件"。
+- **B4（图片空白）**：README 图片渲染——加依赖 `io.noties.markwon:image:4.6.2`（ImagesPlugin 所在模块！image-coil **不传递**编译期依赖，漏加会编译失败）+ `image-coil:4.6.2`；Markwon 加 `ImagesPlugin.create()` + `CoilImagesPlugin.create(context)`；相对路径图片 `![alt](docs/x.png)` 预处理为 `https://raw.githubusercontent.com/{owner}/{repo}/{branch}/` 前缀（`resolveRelativeImageUrls`，remember 缓存）。
+- **B6（过期产物可点）**：`ArtifactRow` 过期时 `alpha(0.5f)` + `combinedClickable(enabled = false)`。
+- **B7①（冻结耗时）**：`status != "completed"` 时不显示耗时标签（列表 + run 详情卡）。
+- **B8（议题数含 PR）**：文案改"${openIssuesCount} 个（含拉取请求）"。
+- **O1**：StepLogsViewModel 按 jobId 缓存日志全文，切步骤不重复下载。
+- **O3**：`formatSize` 提取 `utils/Formatters.kt`（RunJobs/ReleaseDetail 复用）。
+- **O5**：`timeAgo` 加月/年档位（43200 分钟=30 天/525600=365 天）。
+- **O6**：ReadmeSection `update` 用 `tv.tag` 比对 markdown 内容变化再 `setMarkdown`（README 长时避免重复 parse）。
+
+**未修（写明理由）**：
+- **B5（token 随 302 外泄）**：不修。OkHttp（getJobLogs）跨域重定向**自动剥离 Authorization**，无外泄；DownloadManager 虽重发 header，但目标均为 GitHub/Microsoft 自有签名 URL（`objects.githubusercontent.com`/`blob.core.windows.net`），实际可利用性极低，修法（先解析 Location 再下）复杂收益小。
+- **B7②（刷新/轮询）**：P3 酌情项，本轮不做，后续可加 TopAppBar 刷新按钮。
+- **O2（剥离时间戳）**：时间戳有排障价值，保留。
+- **O4（Release body Markdown 渲染）**：Release body 以纯文本为主，改动大收益低。
+- **O7（Issues/PR 状态 tab）**：与 B2 分页一起后续迭代。
+- **O8**：已删 `downloadArtifactStream`/`api.downloadArtifact` 死代码（✓ 实际已做）。
+
 ---
 
-*此文档最后更新：2026-08-26*
+*此文档最后更新：2026-08-27*
