@@ -163,13 +163,26 @@ class GitHubRepository @Inject constructor(
     suspend fun getWorkflowRuns(owner: String, repo: String, workflowId: Long): Result<List<WorkflowRun>> =
         safeApiCall(retryable = true) { api.getWorkflowRuns(owner, repo, workflowId) }.map { it.workflowRuns }
 
+    suspend fun getWorkflowRun(owner: String, repo: String, runId: Long): Result<WorkflowRun> =
+        safeApiCall(retryable = true) { api.getWorkflowRun(owner, repo, runId) }
+
+    suspend fun getRunArtifacts(owner: String, repo: String, runId: Long): Result<List<Artifact>> =
+        safeApiCall(retryable = true) { api.getRunArtifacts(owner, repo, runId) }.map { it.artifacts }
+
     suspend fun getWorkflowRunJobs(owner: String, repo: String, runId: Long): Result<List<WorkflowRunJob>> =
         safeApiCall(retryable = true) { api.getWorkflowRunJobs(owner, repo, runId) }.map { it.jobs }
+
+    suspend fun getJobDetail(owner: String, repo: String, jobId: Long): Result<WorkflowRunJob> =
+        safeApiCall(retryable = true) { api.getJobDetail(owner, repo, jobId) }
 
     /** 获取 job 日志全文（GitHub 302 重定向到日志文本，OkHttp 自动跟随） */
     suspend fun getJobLogs(owner: String, repo: String, jobId: Long): Result<String> =
         safeApiCall(retryable = true) { api.getJobLogs(owner, repo, jobId) }
             .map { it.string() }
+
+    /** 产物 zip 流式下载（body 由调用方负责写入文件并关闭） */
+    suspend fun downloadArtifactStream(url: String): Result<okhttp3.ResponseBody> =
+        safeApiCall(retryable = false) { api.downloadArtifact(url) }
 
     /** 获取 README 并直接返回解码后的 Markdown 文本 */
     suspend fun getReadme(owner: String, repo: String): Result<String> {

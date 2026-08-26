@@ -113,6 +113,20 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 30
     ): Response<WorkflowRunResponse>
 
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}")
+    suspend fun getWorkflowRun(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long
+    ): Response<WorkflowRun>
+
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}/artifacts")
+    suspend fun getRunArtifacts(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long
+    ): Response<ArtifactResponse>
+
     @GET("repos/{owner}/{repo}/actions/runs/{run_id}/jobs")
     suspend fun getWorkflowRunJobs(
         @Path("owner") owner: String,
@@ -121,6 +135,13 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 30
     ): Response<WorkflowRunJobResponse>
 
+    @GET("repos/{owner}/{repo}/actions/jobs/{job_id}")
+    suspend fun getJobDetail(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("job_id") jobId: Long
+    ): Response<WorkflowRunJob>
+
     // job 日志：GitHub 返回 302 重定向到日志文本，OkHttp 自动跟随
     @GET("repos/{owner}/{repo}/actions/jobs/{job_id}/logs")
     suspend fun getJobLogs(
@@ -128,6 +149,11 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Path("job_id") jobId: Long
     ): Response<ResponseBody>
+
+    // 产物 zip 下载（archive_download_url 需要认证，AuthInterceptor 自动带 token）
+    @Streaming
+    @GET
+    suspend fun downloadArtifact(@Url url: String): Response<ResponseBody>
 
     @GET("repos/{owner}/{repo}/readme")
     suspend fun getReadme(

@@ -124,6 +124,24 @@ private fun RunRow(run: WorkflowRun, onClick: () -> Unit) {
     )
 }
 
+/** 计算 ISO8601 时间差，格式化为 "X分X秒" / "X小时X分"；end 为空（进行中）则算到当前时间 */
+fun formatDuration(startIso: String?, endIso: String?): String {
+    if (startIso.isNullOrBlank()) return ""
+    val start = runCatching { java.time.Instant.parse(startIso) }.getOrNull() ?: return ""
+    val end = if (endIso.isNullOrBlank()) {
+        java.time.Instant.now()
+    } else {
+        runCatching { java.time.Instant.parse(endIso) }.getOrNull() ?: return ""
+    }
+    val seconds = java.time.Duration.between(start, end).seconds
+    return when {
+        seconds < 0 -> ""
+        seconds < 60 -> "${seconds}秒"
+        seconds < 3600 -> "${seconds / 60}分${seconds % 60}秒"
+        else -> "${seconds / 3600}小时${(seconds % 3600) / 60}分"
+    }
+}
+
 /** 运行状态徽标：结论优先（success 绿 / failure 红 / cancelled 灰），进行中黄、排队蓝 */
 @Composable
 fun WorkflowStatusBadge(status: String, conclusion: String?) {

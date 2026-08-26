@@ -266,8 +266,10 @@ private fun ReadmeSection(markdown: String) {
         AndroidView(
             factory = { ctx ->
                 TextView(ctx).apply {
-                    // 12sp 小字号（与功能入口文字相当或更小），1.3 倍行距
-                    textSize = 12f * ctx.resources.displayMetrics.scaledDensity
+                    // 12sp 小字号（与功能入口文字相当或更小），1.3 倍行距。
+                    // ⚠️ setTextSize(float) 默认单位是 sp（内部已应用 scaledDensity），
+                    // 不能再手动乘 scaledDensity，否则字号会二次放大（曾致 README 字体偏大）。
+                    textSize = 12f
                     setTextColor(textColor.toArgb())
                     setBackgroundColor(surfaceColor.toArgb())
                     setLineSpacing(0f, 1.3f)

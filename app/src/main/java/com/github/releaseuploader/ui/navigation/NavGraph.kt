@@ -54,9 +54,13 @@ sealed class Screen(val route: String) {
     data object RunJobs : Screen("repo_run_jobs/{owner}/{repo}/{runId}") {
         fun createRoute(owner: String, repo: String, runId: Long) = "repo_run_jobs/$owner/$repo/$runId"
     }
-    data object JobLogs : Screen("repo_job_logs/{owner}/{repo}/{jobId}/{jobName}") {
+    data object JobDetail : Screen("repo_job_detail/{owner}/{repo}/{jobId}/{jobName}") {
         fun createRoute(owner: String, repo: String, jobId: Long, jobName: String) =
-            "repo_job_logs/$owner/$repo/$jobId/${Uri.encode(jobName)}"
+            "repo_job_detail/$owner/$repo/$jobId/${Uri.encode(jobName)}"
+    }
+    data object StepLogs : Screen("repo_step_logs/{owner}/{repo}/{jobId}/{stepNumber}/{stepName}") {
+        fun createRoute(owner: String, repo: String, jobId: Long, stepNumber: Int, stepName: String) =
+            "repo_step_logs/$owner/$repo/$jobId/$stepNumber/${Uri.encode(stepName)}"
     }
 }
 
@@ -314,7 +318,7 @@ fun NavGraph(navController: NavHostController) {
             )
         }
 
-        // 运行任务（job）列表页
+        // 运行详情页（概要 + 产物 + 任务列表）
         composable(
             route = Screen.RunJobs.route,
             arguments = listOf(
@@ -331,16 +335,16 @@ fun NavGraph(navController: NavHostController) {
                 repo = repo,
                 runId = runId,
                 onJobClick = { jobId, jobName ->
-                    navController.navigate(Screen.JobLogs.createRoute(owner, repo, jobId, jobName))
+                    navController.navigate(Screen.JobDetail.createRoute(owner, repo, jobId, jobName))
                 },
                 onLoggedOut = { navController.navigateToLogin() },
                 onBack = { navController.popBackStack() }
             )
         }
 
-        // 任务日志页
+        // 任务详情页（状态 + 耗时 + 步骤列表）
         composable(
-            route = Screen.JobLogs.route,
+            route = Screen.JobDetail.route,
             arguments = listOf(
                 navArgument("owner") { type = NavType.StringType },
                 navArgument("repo") { type = NavType.StringType },
@@ -352,11 +356,41 @@ fun NavGraph(navController: NavHostController) {
             val repo = backStackEntry.arguments?.getString("repo") ?: ""
             val jobId = backStackEntry.arguments?.getLong("jobId") ?: 0L
             val jobName = backStackEntry.arguments?.getString("jobName") ?: ""
-            JobLogsScreen(
+            JobDetailScreen(
                 owner = owner,
                 repo = repo,
                 jobId = jobId,
                 jobName = jobName,
+                onStepClick = { stepNumber, stepName ->
+                    navController.navigate(Screen.StepLogs.createRoute(owner, repo, jobId, stepNumber, stepName))
+                },
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 步骤日志页
+        composable(
+            route = Screen.StepLogs.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("jobId") { type = NavType.LongType },
+                navArgument("stepNumber") { type = NavType.IntType },
+                navArgument("stepName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val jobId = backStackEntry.arguments?.getLong("jobId") ?: 0L
+            val stepNumber = backStackEntry.arguments?.getInt("stepNumber") ?: 1
+            val stepName = backStackEntry.arguments?.getString("stepName") ?: ""
+            StepLogsScreen(
+                owner = owner,
+                repo = repo,
+                jobId = jobId,
+                stepNumber = stepNumber,
+                stepName = stepName,
                 onLoggedOut = { navController.navigateToLogin() },
                 onBack = { navController.popBackStack() }
             )
