@@ -6,17 +6,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,7 +92,7 @@ fun JobDetailScreen(
                                 )
                             }
                         }
-                        items(steps, key = { it.id }) { step ->
+                        items(steps, key = { it.number }) { step ->
                             StepRow(step) { onStepClick(step.number, step.name) }
                         }
                     }
@@ -150,7 +144,7 @@ private fun JobSummaryCard(job: WorkflowRunJob) {
 /** 步骤行：状态图标（成功绿✓/失败红✗/进行中黄圈/跳过灰）+ 名称（等宽）+ 耗时 */
 @Composable
 private fun StepRow(step: WorkflowRunStep, onClick: () -> Unit) {
-    val (icon, tint) = stepStatusVisual(step.status, step.conclusion)
+    val (icon, tint) = runStatusVisual(step.status, step.conclusion)
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
         leadingContent = {
@@ -174,17 +168,4 @@ private fun StepRow(step: WorkflowRunStep, onClick: () -> Unit) {
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     )
-}
-
-/** 步骤状态 → 图标+颜色：结论优先，进行中/排队用灰圈 */
-private fun stepStatusVisual(status: String, conclusion: String?): Pair<ImageVector, Color> {
-    return when {
-        conclusion == "success" -> Icons.Default.CheckCircle to Color(0xFF1F883D)
-        conclusion == "failure" || conclusion == "timed_out" -> Icons.Default.Cancel to Color(0xFFCF222E)
-        conclusion == "cancelled" -> Icons.Default.Cancel to Color(0xFF6E7781)
-        conclusion == "skipped" -> Icons.Default.SkipNext to Color(0xFF6E7781)
-        status == "in_progress" -> Icons.Default.RadioButtonUnchecked to Color(0xFFBF8700)
-        status == "queued" -> Icons.Default.RadioButtonUnchecked to Color(0xFF0969DA)
-        else -> Icons.Default.RadioButtonUnchecked to Color(0xFF6E7781)
-    }
 }

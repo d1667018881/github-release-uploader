@@ -8,6 +8,8 @@ data class WorkflowRun(
     @SerializedName("run_number") val runNumber: Int,
     val name: String?,
     @SerializedName("head_branch") val headBranch: String?,
+    @SerializedName("head_sha") val headSha: String?,
+    @SerializedName("head_commit") val headCommit: RunHeadCommit?,
     val status: String,
     val conclusion: String?,
     /** 触发事件：push / workflow_dispatch / pull_request 等 */
@@ -16,6 +18,12 @@ data class WorkflowRun(
     @SerializedName("created_at") val createdAt: String,
     @SerializedName("completed_at") val completedAt: String?,
     @SerializedName("html_url") val htmlUrl: String
+)
+
+/** 触发本次运行的提交信息（head_commit） */
+data class RunHeadCommit(
+    val message: String?,
+    val sha: String?
 )
 
 data class WorkflowRunResponse(
@@ -39,9 +47,8 @@ data class WorkflowRunJobResponse(
     val jobs: List<WorkflowRunJob>
 )
 
-/** job 里的一个执行步骤 */
+/** job 里的一个执行步骤（⚠️ GitHub steps API 不含 id 字段，列表 key 必须用 number） */
 data class WorkflowRunStep(
-    val id: Long,
     val name: String,
     val status: String,
     val conclusion: String?,
