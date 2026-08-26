@@ -16,6 +16,8 @@ data class WorkflowRun(
     val event: String?,
     val actor: User?,
     @SerializedName("created_at") val createdAt: String,
+    @SerializedName("run_started_at") val runStartedAt: String?,
+    @SerializedName("updated_at") val updatedAt: String?,
     @SerializedName("completed_at") val completedAt: String?,
     @SerializedName("html_url") val htmlUrl: String
 )

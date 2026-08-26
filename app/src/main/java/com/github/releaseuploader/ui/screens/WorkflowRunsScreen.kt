@@ -120,7 +120,8 @@ private fun RunRow(run: WorkflowRun, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val duration = formatDuration(run.createdAt, run.completedAt)
+                    // 耗时用 run_started_at → updated_at（runs API 无 completed_at，created_at 含排队时间）
+                    val duration = formatDuration(run.runStartedAt, run.updatedAt)
                     if (duration.isNotEmpty()) MetaTag("⏱ $duration")
                     if (!run.headBranch.isNullOrBlank()) MetaTag("🌿 ${run.headBranch}")
                     val ago = timeAgo(run.createdAt)
@@ -176,21 +177,23 @@ fun runStatusVisual(status: String, conclusion: String?): Pair<ImageVector, Colo
     }
 }
 
-/** 计算 ISO8601 时间差，格式化为 "X分X秒" / "X小时X分"；end 为空（进行中）则算到当前时间 */
+/**
+ * 计算 ISO8601 时间差，格式化为 "X分X秒" / "X小时X分" / "X天X小时"。
+ * ⚠️ end 为 null 时返回空字符串（不 fallback 到当前时间——那会变成"距开始多久"，是伪耗时）。
+ * 进行中的任务由状态徽标体现，不再显示耗时。
+ */
 fun formatDuration(startIso: String?, endIso: String?): String {
     if (startIso.isNullOrBlank()) return ""
     val start = runCatching { java.time.Instant.parse(startIso) }.getOrNull() ?: return ""
-    val end = if (endIso.isNullOrBlank()) {
-        java.time.Instant.now()
-    } else {
-        runCatching { java.time.Instant.parse(endIso) }.getOrNull() ?: return ""
-    }
+    if (endIso.isNullOrBlank()) return ""
+    val end = runCatching { java.time.Instant.parse(endIso) }.getOrNull() ?: return ""
     val seconds = java.time.Duration.between(start, end).seconds
     return when {
         seconds < 0 -> ""
         seconds < 60 -> "${seconds}秒"
         seconds < 3600 -> "${seconds / 60}分${seconds % 60}秒"
-        else -> "${seconds / 3600}小时${(seconds % 3600) / 60}分"
+        seconds < 86400 -> "${seconds / 3600}小时${(seconds % 3600) / 60}分"
+        else -> "${seconds / 86400}天${(seconds % 86400) / 3600}小时"
     }
 }
 

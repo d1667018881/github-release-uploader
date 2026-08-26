@@ -1,7 +1,11 @@
 package com.github.releaseuploader.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -96,8 +100,13 @@ fun RunJobsScreen(
                             items(artifacts, key = { it.id }) { artifact ->
                                 ArtifactRow(
                                     artifact = artifact,
-                                    isDownloading = uiState.isDownloading,
-                                    onClick = { viewModel.downloadArtifact(artifact) }
+                                    onClick = { viewModel.downloadArtifact(artifact) },
+                                    onLongClick = {
+                                        val clip = ClipData.newPlainText("artifact_url", artifact.archiveDownloadUrl)
+                                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                                            ?.setPrimaryClip(clip)
+                                        Toast.makeText(context, "下载链接已复制", Toast.LENGTH_SHORT).show()
+                                    }
                                 )
                             }
                         }
@@ -153,7 +162,8 @@ private fun RunSummaryCard(run: WorkflowRun) {
                 Spacer(modifier = Modifier.width(8.dp))
                 WorkflowStatusBadge(status = run.status, conclusion = run.conclusion)
             }
-            val duration = formatDuration(run.createdAt, run.completedAt)
+            // 耗时用 run_started_at → updated_at（runs API 无 completed_at，created_at 含排队时间）
+            val duration = formatDuration(run.runStartedAt, run.updatedAt)
             if (duration.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -182,10 +192,12 @@ private fun RunSummaryCard(run: WorkflowRun) {
     }
 }
 
+/** 产物行：点击下载（系统 DownloadManager），长按复制下载链接 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ArtifactRow(artifact: Artifact, isDownloading: Boolean, onClick: () -> Unit) {
+private fun ArtifactRow(artifact: Artifact, onClick: () -> Unit, onLongClick: () -> Unit) {
     ListItem(
-        modifier = Modifier.clickable(enabled = !isDownloading, onClick = onClick),
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
         leadingContent = {
             Icon(Icons.Default.Inventory2, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         },
@@ -199,11 +211,7 @@ private fun ArtifactRow(artifact: Artifact, isDownloading: Boolean, onClick: () 
             )
         },
         trailingContent = {
-            if (isDownloading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            } else {
-                Icon(Icons.Default.Download, contentDescription = "下载", tint = MaterialTheme.colorScheme.primary)
-            }
+            Icon(Icons.Default.Download, contentDescription = "下载", tint = MaterialTheme.colorScheme.primary)
         }
     )
 }

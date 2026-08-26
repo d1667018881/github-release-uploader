@@ -1,11 +1,14 @@
 package com.github.releaseuploader.ui.viewmodel
 
+import android.app.DownloadManager
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.releaseuploader.data.local.SessionManager
+import com.github.releaseuploader.data.local.TokenManager
 import com.github.releaseuploader.data.model.Artifact
 import com.github.releaseuploader.data.model.WorkflowRun
 import com.github.releaseuploader.data.model.WorkflowRunJob
@@ -13,11 +16,9 @@ import com.github.releaseuploader.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.io.File
 import javax.inject.Inject
 
 data class RunJobsUiState(
@@ -26,7 +27,6 @@ data class RunJobsUiState(
     val artifacts: List<Artifact> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isDownloading: Boolean = false,
     val downloadMessage: String? = null,
     val isLoggedOut: Boolean = false
 )
@@ -36,6 +36,7 @@ data class RunJobsUiState(
 class RunJobsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repository: GitHubRepository,
+    private val tokenManager: TokenManager,
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
@@ -77,40 +78,37 @@ class RunJobsViewModel @Inject constructor(
         }
     }
 
-    /** 下载产物 zip（archive_download_url 需认证，走 AuthInterceptor；流式写文件） */
+    /**
+     * 产物走系统 DownloadManager 下载：
+     * archive_download_url 需要认证，用 addRequestHeader 带 Authorization；
+     * GitHub 会 302 重定向到带签名的下载 URL（无需再带 header），DownloadManager 可正常跟随。
+     * 进度由系统通知栏展示，无需 App 内转圈。
+     */
     fun downloadArtifact(artifact: Artifact) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isDownloading = true, downloadMessage = null) }
-            repository.downloadArtifactStream(artifact.archiveDownloadUrl).fold(
-                onSuccess = { body ->
-                    try {
-                        val dir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                        } else {
-                            appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                        }
-                        dir?.mkdirs()
-                        val file = File(dir, "${artifact.name}.zip")
-                        body.use { resp ->
-                            resp.byteStream().use { input ->
-                                file.outputStream().use { output -> input.copyTo(output) }
-                            }
-                        }
-                        _uiState.update {
-                            it.copy(isDownloading = false, downloadMessage = "已下载：${file.absolutePath}")
-                        }
-                    } catch (e: Exception) {
-                        _uiState.update {
-                            it.copy(isDownloading = false, downloadMessage = "下载失败：${e.message}")
-                        }
-                    }
-                },
-                onFailure = { e ->
-                    _uiState.update {
-                        it.copy(isDownloading = false, downloadMessage = "下载失败：${e.message}")
-                    }
-                }
-            )
+        val token = tokenManager.getToken()
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(downloadMessage = "未登录，无法下载产物") }
+            return
+        }
+        val request = DownloadManager.Request(Uri.parse(artifact.archiveDownloadUrl))
+            .setTitle(artifact.name)
+            .setDescription("GitHub 产物下载")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+            .addRequestHeader("Authorization", "token $token")
+            .addRequestHeader("Accept", "application/vnd.github+json")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "${artifact.name}.zip")
+        } else {
+            request.setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, "${artifact.name}.zip")
+        }
+        val manager = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+        if (manager != null) {
+            manager.enqueue(request)
+            _uiState.update { it.copy(downloadMessage = "已开始下载 ${artifact.name}（系统通知栏可查看进度）") }
+        } else {
+            _uiState.update { it.copy(downloadMessage = "系统下载服务不可用") }
         }
     }
 }
