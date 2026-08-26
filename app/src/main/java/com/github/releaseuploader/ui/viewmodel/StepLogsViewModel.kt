@@ -26,6 +26,9 @@ class StepLogsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(StepLogsUiState())
     val uiState: StateFlow<StepLogsUiState> = _uiState.asStateFlow()
 
+    // O1：同一 job 的日志全文按 jobId 缓存，切换步骤只重新 extract，不重复下载
+    private val logCache = mutableMapOf<Long, String>()
+
     init {
         viewModelScope.launch {
             sessionManager.loggedOut.collect {
@@ -37,17 +40,27 @@ class StepLogsViewModel @Inject constructor(
     fun loadStepLogs(owner: String, repo: String, jobId: Long, stepNumber: Int, stepName: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            val cached = logCache[jobId]
+            if (cached != null) {
+                applyLog(cached, stepNumber, stepName)
+                return@launch
+            }
             repository.getJobLogs(owner, repo, jobId).fold(
                 onSuccess = { log ->
-                    val block = extractStepLog(log, stepNumber, stepName)
-                    val lines = block.split("\n").filter { it.isNotBlank() }
-                    _uiState.value = _uiState.value.copy(lines = lines, isLoading = false)
+                    logCache[jobId] = log
+                    applyLog(log, stepNumber, stepName)
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
                 }
             )
         }
+    }
+
+    private fun applyLog(log: String, stepNumber: Int, stepName: String) {
+        val block = extractStepLog(log, stepNumber, stepName)
+        val lines = block.split("\n").filter { it.isNotBlank() }
+        _uiState.value = _uiState.value.copy(lines = lines, isLoading = false)
     }
 
     companion object {

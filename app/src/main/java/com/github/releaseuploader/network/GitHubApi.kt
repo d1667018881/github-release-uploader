@@ -73,7 +73,7 @@ interface GitHubApi {
     suspend fun getContributors(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Query("per_page") perPage: Int = 10
+        @Query("per_page") perPage: Int = 30
     ): Response<List<Contributor>>
 
     @GET("repos/{owner}/{repo}/subscribers")
@@ -149,11 +149,6 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Path("job_id") jobId: Long
     ): Response<ResponseBody>
-
-    // 产物 zip 下载（archive_download_url 需要认证，AuthInterceptor 自动带 token）
-    @Streaming
-    @GET
-    suspend fun downloadArtifact(@Url url: String): Response<ResponseBody>
 
     @GET("repos/{owner}/{repo}/readme")
     suspend fun getReadme(

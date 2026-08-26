@@ -20,6 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.releaseuploader.data.model.Release
 import com.github.releaseuploader.data.model.ReleaseAsset
 import com.github.releaseuploader.ui.viewmodel.ReleaseDetailViewModel
+import com.github.releaseuploader.utils.formatSize
 
 /** 发行版详情页：完整说明 + 附件列表（点击下载） */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -182,13 +183,4 @@ private fun AssetRow(asset: ReleaseAsset, onDownload: () -> Unit) {
             )
         }
     }
-}
-
-private fun formatSize(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kb = bytes / 1024.0
-    if (kb < 1024) return "%.1f KB".format(kb)
-    val mb = kb / 1024.0
-    if (mb < 1024) return "%.1f MB".format(mb)
-    return "%.2f GB".format(mb / 1024.0)
 }

@@ -35,6 +35,8 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.MarkwonSpansFactory
 import io.noties.markwon.core.CoreProps
+import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.coil.CoilImagesPlugin
 import org.commonmark.node.Heading
 
 /** 仓库概览页：GitHub 官方 App 风格——仓库信息 + 功能入口（议题/PR/操作/发行版/贡献者/关注者/代码）+ README 渲染 */
@@ -121,7 +123,8 @@ fun RepoDetailScreen(
                             }
                         }
                         // 功能入口（App 内页面导航，不跳浏览器）
-                        item { EntryItem(Icons.Default.Circle, Color(0xFF1F883D), "议题", "${repoData.openIssuesCount} 个未解决", onClick = onIssuesClick) }
+                        // ⚠️ openIssuesCount 是 GitHub 的 issue+PR 总数，文案如实标注
+                        item { EntryItem(Icons.Default.Circle, Color(0xFF1F883D), "议题", "${repoData.openIssuesCount} 个（含拉取请求）", onClick = onIssuesClick) }
                         item { EntryItem(Icons.Default.CallMerge, Color(0xFF0969DA), "拉取请求", onClick = onPullsClick) }
                         item { EntryItem(Icons.Default.PlayArrow, Color(0xFFBF8700), "操作", onClick = onActionsClick) }
                         item {
@@ -149,7 +152,13 @@ fun RepoDetailScreen(
                         // README
                         if (uiState.readme.isNotBlank()) {
                             item {
-                                ReadmeSection(uiState.readme, onLinkClick = onReadmeLinkClick)
+                                ReadmeSection(
+                                    markdown = uiState.readme,
+                                    owner = owner,
+                                    repo = repo,
+                                    branch = branch,
+                                    onLinkClick = onReadmeLinkClick
+                                )
                             }
                         }
                     }
@@ -224,14 +233,26 @@ private fun EntryItem(
 }
 
 @Composable
-private fun ReadmeSection(markdown: String, onLinkClick: (String) -> Unit) {
+private fun ReadmeSection(
+    markdown: String,
+    owner: String,
+    repo: String,
+    branch: String,
+    onLinkClick: (String) -> Unit
+) {
     val context = LocalContext.current
     // remember 捕获的是首次值，用 rememberUpdatedState 让 linkResolver 始终拿到最新回调
     val currentOnLinkClick by rememberUpdatedState(onLinkClick)
+    // 相对路径图片（![alt](docs/x.png)）预处理为 raw.githubusercontent 绝对 URL，供 Coil 加载
+    val processedMarkdown = remember(markdown, owner, repo, branch) {
+        if (markdown.isEmpty()) "" else resolveRelativeImageUrls(markdown, owner, repo, branch)
+    }
     // 限制 Markdown 标题字号：默认 heading 会放大到 1.6 倍导致"字体太大"，
     // 自定义 SpanFactory 让 h1-h3 最大只放大 1.2/1.1/1.05 倍
     val markwon = remember {
         Markwon.builder(context)
+            .usePlugin(ImagesPlugin.create())
+            .usePlugin(CoilImagesPlugin.create(context))
             .usePlugin(object : AbstractMarkwonPlugin() {
                 override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
                     builder.setFactory(Heading::class.java) { _, props ->
@@ -247,17 +268,22 @@ private fun ReadmeSection(markdown: String, onLinkClick: (String) -> Unit) {
                 }
 
                 override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
-                    // README 链接：仓库内相对链接在 App 内打开（代码页），外部 http(s) 保持浏览器
+                    // README 链接：仓库内相对链接在 App 内打开（代码页），外部 http(s)/mailto:/tel: 交系统
                     builder.linkResolver { view, link ->
-                        val clean = link.substringBefore('#').substringBefore('?')
+                        var clean = link.substringBefore('#').substringBefore('?')
+                        // 非 http 协议（mailto:/tel: 等）交给系统处理
+                        if (clean.startsWith("mailto:") || clean.startsWith("tel:")) {
+                            runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
+                            return@linkResolver
+                        }
                         if (clean.startsWith("http://") || clean.startsWith("https://")) {
-                            runCatching {
-                                view.context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(link))
-                                )
+                            runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
+                        } else {
+                            // 仓库内相对路径归一化：去掉 ./ 和开头 /（README 里很常见的写法）
+                            clean = clean.removePrefix("./").removePrefix("/")
+                            if (clean.isNotBlank()) {
+                                currentOnLinkClick(clean)
                             }
-                        } else if (clean.isNotBlank()) {
-                            currentOnLinkClick(clean)
                         }
                     }
                 }
@@ -300,8 +326,27 @@ private fun ReadmeSection(markdown: String, onLinkClick: (String) -> Unit) {
                 }
             },
             update = { tv ->
-                markwon.setMarkdown(tv, markdown)
+                // O6：markdown 未变化时跳过重复 parse（README 长时收益明显）
+                if (tv.tag != processedMarkdown) {
+                    tv.tag = processedMarkdown
+                    markwon.setMarkdown(tv, processedMarkdown)
+                }
             }
         )
+    }
+}
+
+/** 把 Markdown 里的相对路径图片（![alt](path)）替换为 raw.githubusercontent 绝对 URL */
+private fun resolveRelativeImageUrls(markdown: String, owner: String, repo: String, branch: String): String {
+    val rawBase = "https://raw.githubusercontent.com/$owner/$repo/$branch/"
+    return Regex("!\\[([^]]*)\\]\\(([^)]+)\\)").replace(markdown) { m ->
+        val alt = m.groupValues[1]
+        val dest = m.groupValues[2].substringBefore('#').substringBefore('?')
+        val resolved = when {
+            dest.startsWith("http://") || dest.startsWith("https://") || dest.startsWith("data:") -> dest
+            dest.startsWith("//") -> "https:$dest"
+            else -> rawBase + dest.removePrefix("./").removePrefix("/")
+        }
+        "![$alt]($resolved)"
     }
 }

@@ -10,6 +10,8 @@ import com.github.releaseuploader.network.GitHubApi
 import com.github.releaseuploader.network.ProgressRequestBody
 import com.github.releaseuploader.utils.Constants
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import retrofit2.Response
 import java.io.IOException
@@ -175,19 +177,19 @@ class GitHubRepository @Inject constructor(
     suspend fun getJobDetail(owner: String, repo: String, jobId: Long): Result<WorkflowRunJob> =
         safeApiCall(retryable = true) { api.getJobDetail(owner, repo, jobId) }
 
-    /** 获取 job 日志全文（GitHub 302 重定向到日志文本，OkHttp 自动跟随） */
+    /** 获取 job 日志全文（GitHub 302 重定向到日志文本，OkHttp 自动跟随）。
+     *  ⚠️ 日志可达数 MB，ResponseBody.string() 必须在 IO 线程读取，否则阻塞主线程 ANR */
     suspend fun getJobLogs(owner: String, repo: String, jobId: Long): Result<String> =
-        safeApiCall(retryable = true) { api.getJobLogs(owner, repo, jobId) }
-            .map { it.string() }
-
-    /** 产物 zip 流式下载（body 由调用方负责写入文件并关闭） */
-    suspend fun downloadArtifactStream(url: String): Result<okhttp3.ResponseBody> =
-        safeApiCall(retryable = false) { api.downloadArtifact(url) }
+        withContext(Dispatchers.IO) {
+            safeApiCall(retryable = true) { api.getJobLogs(owner, repo, jobId) }
+                .map { it.string() }
+        }
 
     /** 获取 README 并直接返回解码后的 Markdown 文本 */
-    suspend fun getReadme(owner: String, repo: String): Result<String> {
+    /** 获取 README 并直接返回解码后的 Markdown 文本（Base64 解码量大，走 IO 线程） */
+    suspend fun getReadme(owner: String, repo: String): Result<String> = withContext(Dispatchers.IO) {
         val result = safeApiCall(retryable = true) { api.getReadme(owner, repo) }
-        return result.map { item ->
+        result.map { item ->
             if (item.encoding == "base64" && item.content != null) {
                 val clean = item.content.replace("\n", "").replace("\r", "")
                 String(Base64.decode(clean, Base64.DEFAULT), Charsets.UTF_8)

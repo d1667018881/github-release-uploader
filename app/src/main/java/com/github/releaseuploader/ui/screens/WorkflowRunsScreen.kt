@@ -120,8 +120,9 @@ private fun RunRow(run: WorkflowRun, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // 耗时用 run_started_at → updated_at（runs API 无 completed_at，created_at 含排队时间）
-                    val duration = formatDuration(run.runStartedAt, run.updatedAt)
+                    // 耗时用 run_started_at → updated_at（runs API 无 completed_at，created_at 含排队时间）；
+                    // 进行中的 run updatedAt 停在最后更新，不显示"冻结耗时"，由状态徽标体现
+                    val duration = if (run.status == "completed") formatDuration(run.runStartedAt, run.updatedAt) else ""
                     if (duration.isNotEmpty()) MetaTag("⏱ $duration")
                     if (!run.headBranch.isNullOrBlank()) MetaTag("🌿 ${run.headBranch}")
                     val ago = timeAgo(run.createdAt)
@@ -151,7 +152,7 @@ private fun MetaTag(text: String) {
     }
 }
 
-/** 相对时间："刚刚" / "X分钟前" / "X小时前" / "X天前" */
+/** 相对时间："刚刚" / "X分钟前" / "X小时前" / "X天前" / "X个月前" / "X年前" */
 fun timeAgo(iso: String?): String {
     if (iso.isNullOrBlank()) return ""
     val time = runCatching { java.time.Instant.parse(iso) }.getOrNull() ?: return ""
@@ -160,7 +161,9 @@ fun timeAgo(iso: String?): String {
         minutes < 1 -> "刚刚"
         minutes < 60 -> "${minutes}分钟前"
         minutes < 1440 -> "${minutes / 60}小时前"
-        else -> "${minutes / 1440}天前"
+        minutes < 43200 -> "${minutes / 1440}天前"
+        minutes < 525600 -> "${minutes / 43200}个月前"
+        else -> "${minutes / 525600}年前"
     }
 }
 

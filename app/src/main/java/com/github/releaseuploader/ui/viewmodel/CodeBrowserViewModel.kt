@@ -58,9 +58,15 @@ class CodeBrowserViewModel @Inject constructor(
                     )
                 },
                 onFailure = { e ->
+                    // Gson 解析异常（"Unable to create converter..."）通常意味着该路径是目录（contents API 返回数组）
+                    val msg = if (e.message?.contains("converter") == true) {
+                        "此链接指向目录或无法解析的文件"
+                    } else {
+                        e.message
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = e.message
+                        error = msg
                     )
                 }
             )

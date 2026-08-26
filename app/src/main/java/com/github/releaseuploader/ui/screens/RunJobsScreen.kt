@@ -7,6 +7,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -27,6 +28,7 @@ import com.github.releaseuploader.data.model.Artifact
 import com.github.releaseuploader.data.model.WorkflowRun
 import com.github.releaseuploader.data.model.WorkflowRunJob
 import com.github.releaseuploader.ui.viewmodel.RunJobsViewModel
+import com.github.releaseuploader.utils.formatSize
 
 /** 运行详情页：run 概要（状态/耗时/触发）+ 产物（可下载）+ job 列表（点击看步骤） */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -162,8 +164,9 @@ private fun RunSummaryCard(run: WorkflowRun) {
                 Spacer(modifier = Modifier.width(8.dp))
                 WorkflowStatusBadge(status = run.status, conclusion = run.conclusion)
             }
-            // 耗时用 run_started_at → updated_at（runs API 无 completed_at，created_at 含排队时间）
-            val duration = formatDuration(run.runStartedAt, run.updatedAt)
+            // 耗时用 run_started_at → updated_at（runs API 无 completed_at，created_at 含排队时间）；
+            // 进行中的 run updatedAt 停在最后更新，不显示"冻结耗时"
+            val duration = if (run.status == "completed") formatDuration(run.runStartedAt, run.updatedAt) else ""
             if (duration.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -192,12 +195,18 @@ private fun RunSummaryCard(run: WorkflowRun) {
     }
 }
 
-/** 产物行：点击下载（系统 DownloadManager），长按复制下载链接 */
+/** 产物行：点击下载（系统 DownloadManager），长按复制下载链接；已过期的置灰不可点 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArtifactRow(artifact: Artifact, onClick: () -> Unit, onLongClick: () -> Unit) {
     ListItem(
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        modifier = Modifier
+            .alpha(if (artifact.expired) 0.5f else 1f)
+            .combinedClickable(
+                enabled = !artifact.expired,
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         leadingContent = {
             Icon(Icons.Default.Inventory2, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         },
@@ -211,18 +220,13 @@ private fun ArtifactRow(artifact: Artifact, onClick: () -> Unit, onLongClick: ()
             )
         },
         trailingContent = {
-            Icon(Icons.Default.Download, contentDescription = "下载", tint = MaterialTheme.colorScheme.primary)
+            Icon(
+                Icons.Default.Download,
+                contentDescription = "下载",
+                tint = if (artifact.expired) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+            )
         }
     )
-}
-
-private fun formatSize(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kb = bytes / 1024.0
-    if (kb < 1024) return "%.1f KB".format(kb)
-    val mb = kb / 1024.0
-    if (mb < 1024) return "%.1f MB".format(mb)
-    return "%.2f GB".format(mb / 1024.0)
 }
 
 @Composable
