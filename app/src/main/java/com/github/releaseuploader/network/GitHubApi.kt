@@ -121,6 +121,14 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 30
     ): Response<WorkflowRunJobResponse>
 
+    // job 日志：GitHub 返回 302 重定向到日志文本，OkHttp 自动跟随
+    @GET("repos/{owner}/{repo}/actions/jobs/{job_id}/logs")
+    suspend fun getJobLogs(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("job_id") jobId: Long
+    ): Response<ResponseBody>
+
     @GET("repos/{owner}/{repo}/readme")
     suspend fun getReadme(
         @Path("owner") owner: String,

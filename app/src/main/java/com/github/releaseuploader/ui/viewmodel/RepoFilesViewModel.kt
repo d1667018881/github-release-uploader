@@ -15,15 +15,10 @@ data class RepoFilesUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val currentPath: String = "",
-    val releaseTag: String = "",
-    val showReleaseDialog: Boolean = false,
-    val isCreatingRelease: Boolean = false,
-    val uploadUrl: String = "",
-    val releaseError: String? = null,
     val isLoggedOut: Boolean = false
 )
 
-/** 仓库文件浏览页：目录导航 + Release 上传 */
+/** 仓库文件浏览页：目录导航 + 代码查看 */
 @HiltViewModel
 class RepoFilesViewModel @Inject constructor(
     private val repository: GitHubRepository,
@@ -56,44 +51,6 @@ class RepoFilesViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         error = e.message
-                    )
-                }
-            )
-        }
-    }
-
-    fun showReleaseDialog() {
-        _uiState.value = _uiState.value.copy(showReleaseDialog = true)
-    }
-
-    fun hideReleaseDialog() {
-        _uiState.value = _uiState.value.copy(showReleaseDialog = false)
-    }
-
-    fun setReleaseTag(tag: String) {
-        _uiState.value = _uiState.value.copy(releaseTag = tag)
-    }
-
-    fun createRelease(owner: String, repo: String, onSuccess: (String) -> Unit) {
-        val tag = _uiState.value.releaseTag
-        if (tag.isBlank()) return
-
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isCreatingRelease = true)
-            repository.createRelease(owner, repo, tag).fold(
-                onSuccess = { release ->
-                    _uiState.value = _uiState.value.copy(
-                        isCreatingRelease = false,
-                        showReleaseDialog = false,
-                        uploadUrl = release.uploadUrl,
-                        releaseError = null
-                    )
-                    onSuccess(release.uploadUrl)
-                },
-                onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(
-                        isCreatingRelease = false,
-                        releaseError = "创建 Release 失败：${e.message}"
                     )
                 }
             )

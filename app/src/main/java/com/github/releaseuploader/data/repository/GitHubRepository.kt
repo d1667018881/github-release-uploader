@@ -166,6 +166,11 @@ class GitHubRepository @Inject constructor(
     suspend fun getWorkflowRunJobs(owner: String, repo: String, runId: Long): Result<List<WorkflowRunJob>> =
         safeApiCall(retryable = true) { api.getWorkflowRunJobs(owner, repo, runId) }.map { it.jobs }
 
+    /** 获取 job 日志全文（GitHub 302 重定向到日志文本，OkHttp 自动跟随） */
+    suspend fun getJobLogs(owner: String, repo: String, jobId: Long): Result<String> =
+        safeApiCall(retryable = true) { api.getJobLogs(owner, repo, jobId) }
+            .map { it.string() }
+
     /** 获取 README 并直接返回解码后的 Markdown 文本 */
     suspend fun getReadme(owner: String, repo: String): Result<String> {
         val result = safeApiCall(retryable = true) { api.getReadme(owner, repo) }

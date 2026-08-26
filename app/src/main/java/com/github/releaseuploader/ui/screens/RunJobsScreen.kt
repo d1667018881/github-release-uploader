@@ -1,10 +1,12 @@
 package com.github.releaseuploader.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +25,7 @@ fun RunJobsScreen(
     owner: String,
     repo: String,
     runId: Long,
+    onJobClick: (Long, String) -> Unit,
     onLoggedOut: () -> Unit,
     onBack: () -> Unit,
     viewModel: RunJobsViewModel = hiltViewModel()
@@ -67,7 +70,7 @@ fun RunJobsScreen(
                 else -> {
                     LazyColumn {
                         items(uiState.jobs, key = { it.id }) { job ->
-                            JobRow(job)
+                            JobRow(job) { onJobClick(job.id, job.name) }
                         }
                     }
                 }
@@ -77,8 +80,9 @@ fun RunJobsScreen(
 }
 
 @Composable
-private fun JobRow(job: WorkflowRunJob) {
+private fun JobRow(job: WorkflowRunJob, onClick: () -> Unit) {
     ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -98,6 +102,9 @@ private fun JobRow(job: WorkflowRunJob) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        },
+        trailingContent = {
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     )
 }

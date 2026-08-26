@@ -22,10 +22,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import android.widget.TextView
+import android.graphics.Typeface
 import com.github.releaseuploader.data.model.Repo
 import com.github.releaseuploader.ui.viewmodel.RepoDetailViewModel
+import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonSpansFactory
+import io.noties.markwon.core.HeadingProps
+import org.commonmark.node.Heading
 
 /** 仓库概览页：GitHub 官方 App 风格——仓库信息 + 功能入口（议题/PR/操作/发行版/贡献者/关注者/代码）+ README 渲染 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -214,7 +221,26 @@ private fun EntryItem(
 @Composable
 private fun ReadmeSection(markdown: String) {
     val context = LocalContext.current
-    val markwon = remember { Markwon.builder(context).build() }
+    // 限制 Markdown 标题字号：默认 heading 会放大到 1.6 倍导致"字体太大"，
+    // 自定义 SpanFactory 让 h1-h3 最大只放大 1.2/1.1/1.05 倍
+    val markwon = remember {
+        Markwon.builder(context)
+            .usePlugin(object : AbstractMarkwonPlugin() {
+                override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
+                    builder.setFactory(Heading) { configuration, props ->
+                        val level = props.get(HeadingProps.LEVEL) ?: 1
+                        val ratio = when (level) {
+                            1 -> 1.2f
+                            2 -> 1.1f
+                            3 -> 1.05f
+                            else -> 1.0f
+                        }
+                        arrayOf(RelativeSizeSpan(ratio), StyleSpan(Typeface.BOLD))
+                    }
+                }
+            })
+            .build()
+    }
     // 适配深浅色主题
     val textColor = MaterialTheme.colorScheme.onSurface
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -240,8 +266,8 @@ private fun ReadmeSection(markdown: String) {
         AndroidView(
             factory = { ctx ->
                 TextView(ctx).apply {
-                    // 13sp 适中字号，1.3 倍行距提升可读性
-                    textSize = 13f * ctx.resources.displayMetrics.scaledDensity
+                    // 12sp 小字号（与功能入口文字相当或更小），1.3 倍行距
+                    textSize = 12f * ctx.resources.displayMetrics.scaledDensity
                     setTextColor(textColor.toArgb())
                     setBackgroundColor(surfaceColor.toArgb())
                     setLineSpacing(0f, 1.3f)

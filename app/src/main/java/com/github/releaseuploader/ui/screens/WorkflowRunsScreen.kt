@@ -103,6 +103,14 @@ private fun RunRow(run: WorkflowRun, onClick: () -> Unit) {
             Text(
                 text = buildString {
                     if (!run.headBranch.isNullOrBlank()) append(run.headBranch)
+                    if (!run.event.isNullOrBlank()) {
+                        if (isNotEmpty()) append(" · ")
+                        append("触发：${run.event}")
+                    }
+                    run.actor?.login?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append(it)
+                    }
                     append(" · ")
                     append(run.createdAt.take(16).replace('T', ' '))
                 },

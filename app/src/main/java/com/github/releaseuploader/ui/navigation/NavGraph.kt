@@ -54,6 +54,10 @@ sealed class Screen(val route: String) {
     data object RunJobs : Screen("repo_run_jobs/{owner}/{repo}/{runId}") {
         fun createRoute(owner: String, repo: String, runId: Long) = "repo_run_jobs/$owner/$repo/$runId"
     }
+    data object JobLogs : Screen("repo_job_logs/{owner}/{repo}/{jobId}/{jobName}") {
+        fun createRoute(owner: String, repo: String, jobId: Long, jobName: String) =
+            "repo_job_logs/$owner/$repo/$jobId/${Uri.encode(jobName)}"
+    }
 }
 
 private fun NavHostController.navigateToLogin() {
@@ -326,6 +330,33 @@ fun NavGraph(navController: NavHostController) {
                 owner = owner,
                 repo = repo,
                 runId = runId,
+                onJobClick = { jobId, jobName ->
+                    navController.navigate(Screen.JobLogs.createRoute(owner, repo, jobId, jobName))
+                },
+                onLoggedOut = { navController.navigateToLogin() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 任务日志页
+        composable(
+            route = Screen.JobLogs.route,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType },
+                navArgument("repo") { type = NavType.StringType },
+                navArgument("jobId") { type = NavType.LongType },
+                navArgument("jobName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val owner = backStackEntry.arguments?.getString("owner") ?: ""
+            val repo = backStackEntry.arguments?.getString("repo") ?: ""
+            val jobId = backStackEntry.arguments?.getLong("jobId") ?: 0L
+            val jobName = backStackEntry.arguments?.getString("jobName") ?: ""
+            JobLogsScreen(
+                owner = owner,
+                repo = repo,
+                jobId = jobId,
+                jobName = jobName,
                 onLoggedOut = { navController.navigateToLogin() },
                 onBack = { navController.popBackStack() }
             )
