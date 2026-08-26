@@ -558,6 +558,16 @@ print(f'Check Suite: {cs}')
 - **产物长按复制下载链接**：`ArtifactRow` 用 `combinedClickable(onClick, onLongClick)`（`@OptIn(ExperimentalFoundationApi::class)`），长按复制 `archive_download_url` 到剪贴板并 Toast。
 - 移除 `RunJobsUiState.isDownloading`（下载状态交给系统）；Repository 的 `downloadArtifactStream` 保留未删（当前无调用方）。
 
+### 私人仓库附件下载 + README 链接 + 日志换行（2026-08-26 追加，commit ecfc6c7）
+
+> 用户反馈：①私人仓库的发行版附件下载失败（官方 App 正常）；②README 里指向本仓库文档的链接点击跳浏览器；③日志页加自动换行按钮。
+
+- **私人仓库附件下载失败修复**：`browser_download_url` 对 private repo 需要认证。原来 ReleaseDetailScreen 本地 `downloadAsset` 用 DownloadManager 直接下载**不带 Authorization** → 401 失败。改为 `ReleaseDetailViewModel.downloadAsset(asset)`（注入 `@ApplicationContext` + `TokenManager`），`addRequestHeader("Authorization", "token xxx")`，与产物下载同一模式；Screen 删掉本地下载函数，Toast 提示改走 `downloadMessage` state。
+- **README 仓库内链接 App 内打开**：`ReadmeSection` 加 `onLinkClick` 回调，Markwon 插件里 `configureConfiguration { linkResolver { view, link -> ... } }`：
+  - 链接去掉 `#锚点`/`?查询` 后，`http(s)://` 开头 → 保持浏览器打开（`Intent.ACTION_VIEW`）；其他相对路径 → `onReadmeLinkClick(path)` → NavGraph 导航到 `CodeBrowser` 代码页打开该文件。
+  - ⚠️ `remember { }` 捕获的是首次闭包，回调必须用 `rememberUpdatedState` 包一层，否则 linkResolver 永远拿到旧回调。
+- **日志自动换行按钮**：`StepLogsScreen` 加 `wrapLines` 开关（rememberSaveable，TopAppBar「换行：开/关」按钮）；开启时日志行 `Modifier.fillMaxWidth()` 自动换行占满屏宽，关闭时保持 `horizontalScroll` 横向滚动。
+
 ---
 
 *此文档最后更新：2026-08-26*
