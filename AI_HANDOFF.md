@@ -532,6 +532,19 @@ print(f'Check Suite: {cs}')
 - **共用工具**（放 `WorkflowRunsScreen.kt`，同包复用）：`formatDuration(startIso, endIso)` 用 `java.time.Instant` 解析（minSdk 26 可用），输出 "X分X秒"/"X小时X分"。
 - ⚠️ 删除文件走 git trees API：`{'path': ..., 'sha': None}`（base_tree 不列出的文件会保留，必须显式 sha:null 删除）；RunJobsViewModel 注入 `@ApplicationContext` 用于产物落盘路径。
 
+### 闪退修复 + 运行列表对齐官方 App（2026-08-26 追加，commit db729f7）
+
+> 用户反馈：①点进日志 100% 闪退；②工作流列表项仍精简（官方：提交信息粗体 + 工作流名/#号/SHA + 时长/分支/相对时间标签）。
+
+- **闪退根因（重要）**：GitHub job steps API 的 step 对象**没有 id 字段**（只有 name/status/conclusion/number/started_at/completed_at）。模型里 `WorkflowRunStep.id` 声明为必填 Long → Gson 全给 0 → `LazyColumn items(steps, key = { it.id })` **key 全部重复 → IllegalArgumentException 崩溃**。修复：`WorkflowRunStep` 删除 id 字段，`key = { it.number }`。
+  - ⚠️ 教训：**凡是 GitHub API 不含 id 的列表元素（steps），key 必须用唯一业务字段（number），不能假设 id 存在**。items 的 key 重复是 100% 闪退。
+- **运行列表项对齐官方 App（WorkflowRunsScreen.RunRow 重写）**：
+  - 左侧状态图标（成功绿 ✓ CheckCircle / 失败红 ✗ Cancel / 进行中黄圈 / 跳过灰）——`runStatusVisual(status, conclusion)` 提取为同包 internal，JobDetail 步骤列表共用（删除了 JobDetail 私有副本）。
+  - 主标题：**提交信息**（`head_commit.message` 首行，粗体，2 行截断），无提交信息时回退 `#运行号 名称`。
+  - 第二行：`工作流名 · #运行号 · SHA 前 7 位`（灰字）。
+  - 第三行：**圆角标签组** `MetaTag`（surfaceVariant 底 + labelSmall）：⏱ 耗时 / 🌿 分支 / 📅 **相对时间**（`timeAgo`："刚刚/X分钟前/X小时前/X天前"）。
+- **模型**：WorkflowRun 加 `head_sha`、`head_commit`（新 `RunHeadCommit(message, sha)`）。
+
 ---
 
 *此文档最后更新：2026-08-26*
