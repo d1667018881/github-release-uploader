@@ -336,16 +336,30 @@ private fun ReadmeSection(
     }
 }
 
-/** 把 Markdown 里的相对路径图片（![alt](path)）替换为 raw.githubusercontent 绝对 URL */
+/**
+ * 把 Markdown 里的相对路径图片替换为 raw.githubusercontent 绝对 URL。
+ * ⚠️ 绝对 URL（含 shields.io 动态徽章）必须原样保留 query，只有相对路径才剥 #/?。
+ * 同时处理引用式图片定义（[ref]: docs/x.png），否则引用式写法加载失败。
+ */
 private fun resolveRelativeImageUrls(markdown: String, owner: String, repo: String, branch: String): String {
     val rawBase = "https://raw.githubusercontent.com/$owner/$repo/$branch/"
-    return Regex("!\\[([^]]*)\\]\\(([^)]+)\\)").replace(markdown) { m ->
-        val alt = m.groupValues[1]
-        val dest = m.groupValues[2].substringBefore('#').substringBefore('?')
+    // ① 引用式图片定义：`[ref]: path`（行首）
+    val withRefs = Regex("^\\[([^\\]]+)\\]:\\s*(\\S+)", RegexOption.MULTILINE).replace(markdown) { m ->
+        val name = m.groupValues[1]
+        val url = m.groupValues[2]
         val resolved = when {
-            dest.startsWith("http://") || dest.startsWith("https://") || dest.startsWith("data:") -> dest
-            dest.startsWith("//") -> "https:$dest"
-            else -> rawBase + dest.removePrefix("./").removePrefix("/")
+            url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:") || url.startsWith("//") -> url
+            else -> rawBase + url.substringBefore('#').substringBefore('?').removePrefix("./").removePrefix("/")
+        }
+        "[$name]: $resolved"
+    }
+    // ② 内联图片：`![alt](path)`，绝对 URL 原样保留
+    return Regex("!\\[([^]]*)\\]\\(([^)]+)\\)").replace(withRefs) { m ->
+        val alt = m.groupValues[1]
+        val raw = m.groupValues[2]
+        val resolved = when {
+            raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:") || raw.startsWith("//") -> raw
+            else -> rawBase + raw.substringBefore('#').substringBefore('?').removePrefix("./").removePrefix("/")
         }
         "![$alt]($resolved)"
     }

@@ -59,7 +59,7 @@ interface GitHubApi {
     suspend fun getReleases(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Query("per_page") perPage: Int = 5
+        @Query("per_page") perPage: Int = 30
     ): Response<List<Release>>
 
     @GET("repos/{owner}/{repo}/releases/{release_id}")

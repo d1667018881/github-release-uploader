@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.github.releaseuploader.data.local.SessionManager
 import com.github.releaseuploader.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class StepLogsUiState(
@@ -57,9 +59,12 @@ class StepLogsViewModel @Inject constructor(
         }
     }
 
-    private fun applyLog(log: String, stepNumber: Int, stepName: String) {
-        val block = extractStepLog(log, stepNumber, stepName)
-        val lines = block.split("\n").filter { it.isNotBlank() }
+    private suspend fun applyLog(log: String, stepNumber: Int, stepName: String) {
+        // N3：日志解析（extractStepLog 状态机 + split + filter）在 Default 线程，避免 MB 级日志卡主线程
+        val lines = withContext(Dispatchers.Default) {
+            val block = extractStepLog(log, stepNumber, stepName)
+            block.split("\n").filter { it.isNotBlank() }
+        }
         _uiState.value = _uiState.value.copy(lines = lines, isLoading = false)
     }
 
