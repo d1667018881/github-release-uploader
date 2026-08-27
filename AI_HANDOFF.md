@@ -593,6 +593,21 @@ print(f'Check Suite: {cs}')
 - **O7（Issues/PR 状态 tab）**：与 B2 分页一起后续迭代。
 - **O8**：已删 `downloadArtifactStream`/`api.downloadArtifact` 死代码（✓ 实际已做）。
 
+### 智谱 Round 6 复审处理（2026-08-27 追加，commit 59553a8）
+
+> 智谱对 Round5 修复做增量复审（含 OkHttp/Retrofit/Coil/markwon 四库源码级实证），确认 B1-B8/O 系列全部落地，并新发现 N1-N5。
+
+**已修复**：
+- **N1（P2，自报不符）**：`getReleases` perPage 实际仍是 5（Round5 的 5→30 因**并行 file_edit 编辑同一文件被互相覆盖丢失**——getContributors 改成了、getReleases 丢了）。已改 30。
+- **N2（P2，B4 回归）**：`resolveRelativeImageUrls` 里 `substringBefore('#').substringBefore('?')` 在分支判断**之前**执行，shields.io 动态徽章等绝对 URL 的 query 被剥掉致 404。已改为**仅相对路径剥 #/?**，绝对 URL 原样保留。
+- **N3（P3）**：`StepLogsViewModel.applyLog` 的 extractStepLog/split/filter 仍在主线程。已包 `withContext(Dispatchers.Default)`（用 suspend + withContext 而非嵌套 launch，避免连续切步骤竞态）。
+- **N4（P3）**：引用式图片 `![alt][ref]` + `[ref]: docs/x.png` 不被内联正则覆盖。已在 `resolveRelativeImageUrls` 增加**引用定义替换**（行首 `[ref]: path` 正则，相对路径拼 raw 前缀）。
+
+**未修（写明理由）**：
+- **N5（P3）**：代码块内图片示例文本被正则误改写。极低频（README 教学示例），Markdown 代码块检测需完整状态机，改动复杂收益低，记录在案。
+
+⚠️ **教训（再次验证）**：file_edit 并行编辑**同一文件**会互相覆盖（Round5 的 getReleases 改动就是这么丢的），同一文件的多次修改必须串行执行并事后 grep 验证。
+
 ---
 
 *此文档最后更新：2026-08-27*
