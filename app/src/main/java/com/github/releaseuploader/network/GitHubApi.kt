@@ -19,6 +19,8 @@ interface GitHubApi {
         @Query("sort") sort: String = "updated"
     ): Response<List<Repo>>
 
+    // contents API 同一 endpoint 两个返回类型：
+    // getContents 用于目录（返回数组，GitHubRepository 缓存）；getFileContent 用于单个文件（返回对象，含 base64 content）
     @GET("repos/{owner}/{repo}/contents/{path}")
     suspend fun getContents(
         @Path("owner") owner: String,

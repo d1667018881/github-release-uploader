@@ -60,6 +60,8 @@ class UploadService : Service() {
         const val EXTRA_FILES = "extra_files"
         const val EXTRA_UPLOAD_URL = "extra_upload_url"
         const val ACTION_STOP = "com.github.releaseuploader.action.STOP"
+        // GitHub Release 附件大小上限 2GB
+        const val MAX_ASSET_SIZE_BYTES = 2L * 1024L * 1024L * 1024L
 
         // 供应用内进度 UI 订阅（RepoDetailScreen collect）
         private val _uploadProgress = MutableStateFlow(UploadState())
@@ -137,6 +139,12 @@ class UploadService : Service() {
                     val fileName = queryDisplayName(contentResolver, uri)
                         ?: (uri.lastPathSegment ?: "file_$index")
                     val mimeType = contentResolver.getType(uri)
+
+                    // GitHub Release 附件上限 2GB，超限提前报错，避免白传几 GB 后失败
+                    val fileSize = querySize(contentResolver, uri)
+                    if (fileSize > MAX_ASSET_SIZE_BYTES) {
+                        throw IOException("文件 $fileName 超过 GitHub 2GB 上传上限")
+                    }
 
                     _uploadProgress.value = _uploadProgress.value.copy(
                         currentFile = fileName,
@@ -224,6 +232,19 @@ class UploadService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "queryDisplayName failed for $uri", e)
             null
+        }
+    }
+
+    /** 查询文件大小（字节）；查询失败返回 -1（不拦截上传） */
+    private fun querySize(contentResolver: ContentResolver, uri: Uri): Long {
+        return try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (idx >= 0 && cursor.moveToFirst()) cursor.getLong(idx) else -1L
+            } ?: -1L
+        } catch (e: Exception) {
+            Log.w(TAG, "querySize failed for $uri", e)
+            -1L
         }
     }
 

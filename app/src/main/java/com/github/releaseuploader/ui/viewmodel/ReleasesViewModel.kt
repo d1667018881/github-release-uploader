@@ -67,7 +67,15 @@ class ReleasesViewModel @Inject constructor(
     /** 创建 Release（成功后回调 uploadUrl，由页面启动 UploadService 上传附件） */
     fun createRelease(owner: String, repo: String, onSuccess: (String) -> Unit) {
         val tag = _uiState.value.releaseTag
-        if (tag.isBlank()) return
+        if (tag.isBlank()) {
+            _uiState.update { it.copy(releaseError = "标签不能为空") }
+            return
+        }
+        // GitHub tag 规则：不能以 "." 开头、不能包含 ".."、空白、~ ^ : ? * [ \
+        if (tag.startsWith(".") || tag.contains("..") || tag.any { it.isWhitespace() || it in "~^:?*[\\" }) {
+            _uiState.update { it.copy(releaseError = "标签格式无效：不能以 . 开头，不能包含空白字符或 ~ ^ : ? * [ \\") }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isCreatingRelease = true)
