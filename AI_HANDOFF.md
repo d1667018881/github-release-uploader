@@ -608,6 +608,25 @@ print(f'Check Suite: {cs}')
 
 ⚠️ **教训（再次验证）**：file_edit 并行编辑**同一文件**会互相覆盖（Round5 的 getReleases 改动就是这么丢的），同一文件的多次修改必须串行执行并事后 grep 验证。
 
+### 换模型审查处理（2026-08-30，commit f1b0549）
+
+> 另一模型出具 22 条报告，其中 5 条"阻塞级"（称项目无法编译）**经远端文件树实证全部不成立**——该模型用猜测的文件名（如 WorkflowsScreen.kt/WorkflowDetailScreen.kt，本项目实际叫 ActionsScreen/WorkflowRunsScreen）逐个拉取，404 即误判"文件缺失/内容为 404"。实际 Constants.kt、gradlew、gradle/wrapper、strings.xml、themes.xml 均存在，项目 CI 持续构建成功。
+
+**已修复（有实际价值）**：
+- **#11（tag 校验）**：`ReleasesViewModel.createRelease` 加 GitHub tag 规则校验（不能以 `.` 开头、不能含 `..`/空白/`~ ^ : ? * [ \`），非法时 releaseError 提示。
+- **#12（大小预检）**：`UploadService` 上传前 `querySize` 检查文件 >2GB（`MAX_ASSET_SIZE_BYTES`）提前抛错，避免白传。
+- **#14（接口注释）**：`getContents`/`getFileContent` 同一 endpoint 两个返回类型的用途注释。
+
+**不修（写明理由）**：
+- **#1-#5（"阻塞级"）**：实证不成立（文件均存在；libs.versions.toml 不存在但 settings.gradle.kts 未启用 Version Catalog，无影响）。
+- **#6（证书固定）**：GitHub 证书轮换频繁，固定后轮换期会导致全体用户连接失败；HTTPS+token 场景 MITM 需用户主动安装恶意证书，收益低风险高。
+- **#7（token 明文）**：用的 `remember`（不落盘），报告自身也确认正确；onDispose 清引用不改变实际暴露面（TokenManager 内存中本就有）。
+- **#8（isStarred 吞异常）**：401 抛出会让概览页整体加载失败（loadDetail 外层 catch 设 error），静默降级为未标星更合理；token 失效由其他请求报错引导。
+- **#9/#10/#13/#15/#18/#19/#20/#22**：设计选择或可维护性建议，现状稳定/刻意设计/收益低（如 take(10) 对 ISO8601 固定格式安全）。
+- **#16（测试）**：个人工具项目，手动验证为主，加测试成本高收益低。
+- **#17（中文注释）**：老板明确要求全中文。
+- **#21（readme 解码）**：已挪 IO 线程（Round5 B1），`\s` 替换反而可能破坏内容。
+
 ---
 
-*此文档最后更新：2026-08-27*
+*此文档最后更新：2026-08-30*
